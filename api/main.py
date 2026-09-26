@@ -50,7 +50,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -84,6 +85,16 @@ class ScrapeRequest(BaseModel):
     expect_list: bool = Field(
         default=True,
         description="Whether the extracted result is expected to be a list of items.",
+    )
+    scroll: bool = Field(
+        default=True,
+        description="Whether to perform dynamic auto-scrolling to trigger lazy loading.",
+    )
+    max_scrolls: int = Field(
+        default=5,
+        ge=0,
+        le=20,
+        description="Maximum number of scroll steps for dynamic/lazy-loaded content.",
     )
 
 
@@ -155,6 +166,8 @@ async def scrape(request: ScrapeRequest) -> ScrapeResponse:
             request.url,
             request.schema_description,
             request.expect_list,
+            scroll=request.scroll,
+            max_scrolls=request.max_scrolls,
         )
         return ScrapeResponse(
             success=True,

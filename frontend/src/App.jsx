@@ -14,6 +14,8 @@ export default function App() {
   const [schema, setSchema] = useState(DEFAULT_SCHEMA);
   const [retries, setRetries] = useState(3);
   const [expectList, setExpectList] = useState(true);
+  const [scroll, setScroll] = useState(true);
+  const [maxScrolls, setMaxScrolls] = useState(5);
 
   // Runtime states
   const [status, setStatus] = useState('idle'); // idle | running | done | error
@@ -107,7 +109,9 @@ export default function App() {
           url,
           schema_description: schema,
           max_retries: retries,
-          expect_list: expectList
+          expect_list: expectList,
+          scroll,
+          max_scrolls: maxScrolls
         })
       });
 
@@ -217,6 +221,10 @@ export default function App() {
             setRetries={setRetries}
             expectList={expectList}
             setExpectList={setExpectList}
+            scroll={scroll}
+            setScroll={setScroll}
+            maxScrolls={maxScrolls}
+            setMaxScrolls={setMaxScrolls}
             onRun={handleRun}
             isLoading={status === 'running'}
             logs={logs}

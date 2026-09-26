@@ -28,6 +28,10 @@ export default function ConfigPanel({
   setRetries,
   expectList,
   setExpectList,
+  scroll = true,
+  setScroll,
+  maxScrolls = 5,
+  setMaxScrolls,
   onRun,
   isLoading,
   logs = [],
@@ -171,6 +175,51 @@ export default function ConfigPanel({
                 }`} 
               />
             </button>
+          </div>
+        </div>
+
+        {/* DYNAMIC SCROLL & STEALTH ROW */}
+        <div className="grid grid-cols-2 gap-3 p-2.5 bg-[#16181d] border border-[#24262e] rounded-sharp">
+          {/* AUTO-SCROLL TOGGLE */}
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="text-[10px] font-mono text-[#8a8f98]">AUTO-SCROLL</span>
+              <span className="text-[9px] text-[#525866]">Infinite / lazy load</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setScroll(!scroll)}
+              className={`w-9 h-5 rounded-sharp p-0.5 transition-colors border ${
+                scroll 
+                  ? 'bg-[#10b981] border-[#10b981]' 
+                  : 'bg-[#111215] border-[#24262e]'
+              }`}
+            >
+              <div 
+                className={`w-3.5 h-3.5 bg-black rounded-sharp transition-transform ${
+                  scroll ? 'translate-x-4' : 'translate-x-0 bg-[#525866]'
+                }`} 
+              />
+            </button>
+          </div>
+
+          {/* SCROLL DEPTH */}
+          <div className="flex flex-col gap-1 border-l border-[#24262e] pl-3">
+            <div className="flex justify-between items-center text-[10px] font-mono">
+              <span className="text-[#8a8f98]">SCROLL DEPTH</span>
+              <span className="text-[#10b981] font-bold">{scroll ? `${maxScrolls}x` : 'OFF'}</span>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="15"
+              disabled={!scroll}
+              value={maxScrolls}
+              onChange={(e) => setMaxScrolls(parseInt(e.target.value, 10))}
+              className={`w-full h-1 bg-[#24262e] rounded-sharp cursor-pointer ${
+                scroll ? 'accent-[#10b981]' : 'opacity-40 cursor-not-allowed'
+              }`}
+            />
           </div>
         </div>
 
