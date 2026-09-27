@@ -1,7 +1,8 @@
 """
 brain.py
 ~~~~~~~~
-Groq LLM extraction engine — turns distilled text into structured JSON.
+AI extraction engine — turns distilled website text into structured JSON.
+Equipped with multi-model auto-failover to handle Groq rate limits.
 """
 
 import os
@@ -15,19 +16,22 @@ SYSTEM_PROMPT = (
     "You are a precise data extraction engine. "
     "Your ONLY job is to extract structured data from website text and return it as valid JSON. "
     "Return ONLY the JSON object or array. "
-    "No markdown fences, no explanation, no <think> blocks, just raw JSON."
+    "No markdown fences, no explanation, no thinking blocks, just raw JSON."
 )
 
-MODEL = "qwen/qwen3.8-27b"
+# Multi-model pool with auto-failover.
+# openai/gpt-oss-120b has much higher token throughput than qwen's 1000 OTPM ceiling.
+MODELS = [
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.8-27b"
+]
 
 
 class Brain:
     """Wraps the Groq API client to extract structured JSON from distilled text.
 
-    The ``GROQ_API_KEY`` environment variable must be set before instantiation.
-
-    Raises:
-        ValueError: If ``GROQ_API_KEY`` is not present in the environment.
+    Features automatic multi-model failover to prevent 429 Rate Limit errors.
     """
 
     def __init__(self) -> None:
@@ -45,22 +49,10 @@ class Brain:
         schema_description: str,
         previous_error: str | None = None,
     ) -> str:
-        """Call the Groq LLM to extract structured data from *cleaned_text*.
+        """Call the LLM to extract structured data from *cleaned_text*.
 
-        Builds a structured prompt containing the extraction schema, the
-        website text, and (optionally) feedback from a previous failed
-        attempt, then returns the raw LLM response string.
-
-        Args:
-            cleaned_text: Plain text produced by :class:`~scraper.distiller.Distiller`.
-            schema_description: Natural-language description of what fields to
-                extract and what format to return them in.
-            previous_error: If a prior extraction attempt failed validation,
-                pass the error message here so the LLM can self-correct.
-
-        Returns:
-            The raw response string from the LLM (expected to be JSON, but
-            validation is handled by :class:`~scraper.validator.Validator`).
+        Automatically fails over across models if a 429 rate limit or token
+        exhaustion error occurs.
         """
         user_parts: list[str] = [
             "## DATA SCHEMA (what to extract):",
@@ -78,36 +70,44 @@ class Brain:
                 "Extract again and fix the issue.",
             ]
 
-        user_parts.append("\nExtract the data now and return ONLY valid JSON. /no_think")
+        user_parts.append("\nExtract the data now and return ONLY valid JSON.")
         user_prompt = "\n".join(user_parts)
 
-        # Free-tier Groq OTPM limit for qwen3.8-27b is 1,000 tokens/min.
-        # Try with 800 tokens first, cascading down to 500/350 if rate limits trigger.
-        token_limits = [800, 500, 350]
-        last_exception = None
+        last_error = None
 
-        for attempt_idx, token_limit in enumerate(token_limits):
+        # Iterate through model pool with automatic failover
+        for model_name in MODELS:
+            # Scale tokens conservatively for qwen, higher for gpt-oss
+            token_budget = 800 if "qwen" in model_name else 1500
+
             try:
+                logger.info("Attempting extraction with model %s (budget=%d tokens)...", model_name, token_budget)
                 response = self._client.chat.completions.create(
-                    model=MODEL,
+                    model=model_name,
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": user_prompt},
                     ],
-                    temperature=0.4,
-                    max_tokens=token_limit,
+                    temperature=0.3,
+                    max_tokens=token_budget,
                 )
-                return response.choices[0].message.content.strip()
-            except Exception as e:
-                last_exception = e
-                err_msg = str(e).lower()
-                if "rate_limit" in err_msg or "429" in err_msg or "tokens" in err_msg:
-                    logger.warning(
-                        "Groq rate limit hit with max_tokens=%d. Backing off 2s and retrying with reduced tokens...",
-                        token_limit,
-                    )
-                    time.sleep(2)
-                    continue
-                raise
+                content = response.choices[0].message.content.strip()
+                if content:
+                    return content
 
-        raise last_exception or RuntimeError("Failed to extract data within token limits.")
+            except Exception as e:
+                last_error = e
+                err_msg = str(e).lower()
+                if "rate_limit" in err_msg or "429" in err_msg or "tokens" in err_msg or "otpm" in err_msg:
+                    logger.warning(
+                        "Rate limit on %s (error: %s). Auto-failing over to next model in pool...",
+                        model_name,
+                        e,
+                    )
+                    time.sleep(1)
+                    continue
+                else:
+                    logger.error("Non-rate-limit error on %s: %s", model_name, e)
+                    continue
+
+        raise last_error or RuntimeError("All models in the extraction pool exhausted.")
