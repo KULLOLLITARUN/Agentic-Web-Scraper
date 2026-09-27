@@ -114,13 +114,10 @@ class Navigator:
             "headless": self.headless,
             "args": CHROMIUM_LAUNCH_ARGS,
         }
-        if not self.headless:
-            try:
-                # Use installed Chrome if available for max evasion on Akamai/Cloudflare
-                self._browser = await self._playwright.chromium.launch(channel="chrome", **launch_kwargs)
-            except Exception:
-                self._browser = await self._playwright.chromium.launch(**launch_kwargs)
-        else:
+        try:
+            # Use installed Chrome channel when available for genuine browser fingerprint
+            self._browser = await self._playwright.chromium.launch(channel="chrome", **launch_kwargs)
+        except Exception:
             self._browser = await self._playwright.chromium.launch(**launch_kwargs)
         return self
 
