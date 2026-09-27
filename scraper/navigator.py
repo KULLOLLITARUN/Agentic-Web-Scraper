@@ -24,15 +24,8 @@ USER_AGENT = (
 )
 
 DEFAULT_HEADERS = {
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
-    "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-    "Sec-Ch-Ua-Mobile": "?0",
-    "Sec-Ch-Ua-Platform": '"Windows"',
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-User": "?1",
     "Upgrade-Insecure-Requests": "1",
 }
 
@@ -109,17 +102,26 @@ class Navigator:
             html = await nav.fetch("https://example.com", scroll=True, max_scrolls=5)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, headless: bool = True) -> None:
+        self.headless = headless
         self._playwright = None
         self._browser: Browser | None = None
 
     async def __aenter__(self) -> "Navigator":
-        """Start the Playwright engine and launch a stealth headless Chromium browser."""
+        """Start the Playwright engine and launch Chromium with stealth settings."""
         self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(
-            headless=True,
-            args=CHROMIUM_LAUNCH_ARGS,
-        )
+        launch_kwargs = {
+            "headless": self.headless,
+            "args": CHROMIUM_LAUNCH_ARGS,
+        }
+        if not self.headless:
+            try:
+                # Use installed Chrome if available for max evasion on Akamai/Cloudflare
+                self._browser = await self._playwright.chromium.launch(channel="chrome", **launch_kwargs)
+            except Exception:
+                self._browser = await self._playwright.chromium.launch(**launch_kwargs)
+        else:
+            self._browser = await self._playwright.chromium.launch(**launch_kwargs)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
@@ -237,6 +239,9 @@ class Navigator:
                     pass
             except PlaywrightTimeoutError:
                 logger.warning("domcontentloaded timed out for %s; attempting to read partial DOM", url)
+
+            # Allow single-page application hydration (e.g. Next.js / React splash screens)
+            await page.wait_for_timeout(3500)
 
             # Auto-dismiss cookie dialogs
             await self._dismiss_cookie_banner(page)

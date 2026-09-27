@@ -47,6 +47,7 @@ class ScraperPipeline:
         expect_list: bool = True,
         scroll: bool = True,
         max_scrolls: int = 5,
+        headless: bool = True,
     ) -> dict[str, Any]:
         """Fetch *url*, extract data matching *schema_description*, and return it.
 
@@ -87,7 +88,7 @@ class ScraperPipeline:
             scroll,
             max_scrolls,
         )
-        async with Navigator() as nav:
+        async with Navigator(headless=headless) as nav:
             raw_html: str = await nav.fetch(
                 url, scroll=scroll, max_scrolls=max_scrolls
             )

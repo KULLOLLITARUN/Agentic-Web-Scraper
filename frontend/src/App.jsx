@@ -16,6 +16,7 @@ export default function App() {
   const [expectList, setExpectList] = useState(true);
   const [scroll, setScroll] = useState(true);
   const [maxScrolls, setMaxScrolls] = useState(5);
+  const [headless, setHeadless] = useState(false); // default visible mode for anti-bot bypass
 
   // Runtime states
   const [status, setStatus] = useState('idle'); // idle | running | done | error
@@ -225,6 +226,8 @@ export default function App() {
             setScroll={setScroll}
             maxScrolls={maxScrolls}
             setMaxScrolls={setMaxScrolls}
+            headless={headless}
+            setHeadless={setHeadless}
             onRun={handleRun}
             isLoading={status === 'running'}
             logs={logs}

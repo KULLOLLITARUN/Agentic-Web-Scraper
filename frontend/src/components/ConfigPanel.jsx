@@ -32,6 +32,8 @@ export default function ConfigPanel({
   setScroll,
   maxScrolls = 5,
   setMaxScrolls,
+  headless = false,
+  setHeadless,
   onRun,
   isLoading,
   logs = [],
@@ -174,6 +176,27 @@ export default function ConfigPanel({
                   expectList ? 'translate-x-4' : 'translate-x-0 bg-[#525866]'
                 }`} 
               />
+            </button>
+          </div>
+        </div>
+
+        {/* BROWSER EVASION MODE ROW */}
+        <div className="grid grid-cols-2 gap-3 p-2.5 bg-[#16181d] border border-[#24262e] rounded-sharp">
+          <div className="flex flex-col">
+            <span className="text-[10px] font-mono text-[#8a8f98]">EVASION MODE</span>
+            <span className="text-[9px] text-[#525866]">Bypass Akamai / WAFs</span>
+          </div>
+          <div className="flex items-center justify-end">
+            <button
+              type="button"
+              onClick={() => setHeadless && setHeadless(!headless)}
+              className={`px-2 py-1 rounded-sharp text-[10px] font-mono font-bold transition-all border ${
+                !headless
+                  ? 'bg-[#10b981]/20 text-[#10b981] border-[#10b981]'
+                  : 'bg-[#111215] text-[#8a8f98] border-[#24262e]'
+              }`}
+            >
+              {!headless ? '● VISIBLE (BYPASS)' : '○ HEADLESS (FAST)'}
             </button>
           </div>
         </div>

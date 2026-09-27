@@ -96,6 +96,10 @@ class ScrapeRequest(BaseModel):
         le=20,
         description="Maximum number of scroll steps for dynamic/lazy-loaded content.",
     )
+    headless: bool = Field(
+        default=True,
+        description="If False, launches visible Chrome to bypass Akamai/Cloudflare WAFs (e.g. for Naukri).",
+    )
 
 
 class ScrapeResponse(BaseModel):
@@ -168,6 +172,7 @@ async def scrape(request: ScrapeRequest) -> ScrapeResponse:
             request.expect_list,
             scroll=request.scroll,
             max_scrolls=request.max_scrolls,
+            headless=request.headless,
         )
         return ScrapeResponse(
             success=True,
