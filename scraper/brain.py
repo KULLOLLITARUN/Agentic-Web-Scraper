@@ -5,7 +5,11 @@ Groq LLM extraction engine — turns distilled text into structured JSON.
 """
 
 import os
+import time
+import logging
 from groq import Groq
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are a precise data extraction engine. "
@@ -77,14 +81,33 @@ class Brain:
         user_parts.append("\nExtract the data now and return ONLY valid JSON. /no_think")
         user_prompt = "\n".join(user_parts)
 
-        response = self._client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.6,
-            max_tokens=4096,
-        )
+        # Free-tier Groq OTPM limit for qwen3.8-27b is 1,000 tokens/min.
+        # Try with 800 tokens first, cascading down to 500/350 if rate limits trigger.
+        token_limits = [800, 500, 350]
+        last_exception = None
 
-        return response.choices[0].message.content.strip()
+        for attempt_idx, token_limit in enumerate(token_limits):
+            try:
+                response = self._client.chat.completions.create(
+                    model=MODEL,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=0.4,
+                    max_tokens=token_limit,
+                )
+                return response.choices[0].message.content.strip()
+            except Exception as e:
+                last_exception = e
+                err_msg = str(e).lower()
+                if "rate_limit" in err_msg or "429" in err_msg or "tokens" in err_msg:
+                    logger.warning(
+                        "Groq rate limit hit with max_tokens=%d. Backing off 2s and retrying with reduced tokens...",
+                        token_limit,
+                    )
+                    time.sleep(2)
+                    continue
+                raise
+
+        raise last_exception or RuntimeError("Failed to extract data within token limits.")
