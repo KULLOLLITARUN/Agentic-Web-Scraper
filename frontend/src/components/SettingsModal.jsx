@@ -44,11 +44,11 @@ export default function SettingsModal({
         <form onSubmit={handleSubmit} className="p-4 space-y-4 font-mono text-xs">
           <div>
             <label className="block text-[10px] font-black text-[#8890a4] mb-1 uppercase tracking-wider">
-              GROQ API KEY (OPTIONAL OVERRIDE)
+              API KEY (OPTIONAL OVERRIDE)
             </label>
             <input 
               type="password"
-              placeholder="Defaults to server .env GROQ_API_KEY"
+              placeholder="Defaults to server .env API key"
               value={formData.apiKey}
               onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
               className="w-full bg-[#0d0e14] border-2 border-[#1c1e26] focus:border-[#00ff88] text-white px-3 py-2 outline-none font-mono text-xs placeholder:text-[#3d4252]"
@@ -57,7 +57,7 @@ export default function SettingsModal({
 
           <div>
             <label className="block text-[10px] font-black text-[#8890a4] mb-1 uppercase tracking-wider">
-              LLM ENGINE MODEL
+              AI ENGINE MODEL
             </label>
             <input 
               type="text"

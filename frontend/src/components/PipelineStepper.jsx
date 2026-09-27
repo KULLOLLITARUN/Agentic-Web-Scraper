@@ -4,7 +4,7 @@ import { Check, AlertCircle, Loader2 } from 'lucide-react';
 export const PIPELINE_STEPS = [
   { id: 'fetch', num: '01', label: 'NAVIGATOR', desc: 'Chromium Engine' },
   { id: 'distill', num: '02', label: 'DISTILLER', desc: '85% Compression' },
-  { id: 'infer', num: '03', label: 'INFERENCE', desc: 'Groq LPU LLM' },
+  { id: 'infer', num: '03', label: 'INFERENCE', desc: 'Neural Pipeline' },
   { id: 'validate', num: '04', label: 'VALIDATOR', desc: 'Self-Healing' },
   { id: 'done', num: '05', label: 'PAYLOAD', desc: 'Validated Data' }
 ];

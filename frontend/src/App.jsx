@@ -37,7 +37,7 @@ export default function App() {
   // Logs feed
   const [logs, setLogs] = useState([
     { time: '14:20:10', type: 'info', badge: 'INIT', message: 'Precision Instrument Workbench ready.' },
-    { time: '14:20:11', type: 'info', badge: 'ENGINE', message: 'Groq qwen3.8-27b client bound to port 8000.' }
+    { time: '14:20:11', type: 'info', badge: 'ENGINE', message: 'Extraction engine connected on port 8000.' }
   ]);
 
   // History & settings
@@ -88,7 +88,7 @@ export default function App() {
       }, 1200),
       setTimeout(() => {
         setCurrentStep('infer');
-        addLog(`Transmitting distilled text to Groq LLM (${config.model || 'qwen/qwen3.8-27b'})...`, 'info', 'INFER');
+        addLog('Transmitting distilled text to AI inference engine...', 'info', 'INFER');
       }, 2600),
       setTimeout(() => {
         setCurrentStep('validate');
