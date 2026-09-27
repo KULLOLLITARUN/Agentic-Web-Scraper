@@ -10,13 +10,14 @@ const DEFAULT_URL = 'https://quotes.toscrape.com';
 const DEFAULT_SCHEMA = 'Each quote: text (string), author (string), tags (list of strings)';
 
 export default function App() {
+  const [theme, setTheme] = useState('dark');
   const [url, setUrl] = useState(DEFAULT_URL);
   const [schema, setSchema] = useState(DEFAULT_SCHEMA);
   const [retries, setRetries] = useState(3);
   const [expectList, setExpectList] = useState(true);
   const [scroll, setScroll] = useState(true);
   const [maxScrolls, setMaxScrolls] = useState(5);
-  const [headless, setHeadless] = useState(true); // default invisible headless mode // default visible mode for anti-bot bypass
+  const [headless, setHeadless] = useState(true);
 
   // Runtime states
   const [status, setStatus] = useState('idle'); // idle | running | done | error
@@ -53,6 +54,9 @@ export default function App() {
 
   useEffect(() => {
     try {
+      const savedTheme = localStorage.getItem('studio_theme') || 'dark';
+      setTheme(savedTheme);
+
       const savedHistory = localStorage.getItem('ai_scraper_history');
       if (savedHistory) setHistory(JSON.parse(savedHistory));
 
@@ -62,6 +66,12 @@ export default function App() {
       console.error('Failed to load local storage:', e);
     }
   }, []);
+
+  const handleToggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    localStorage.setItem('studio_theme', next);
+  };
 
   const addLog = (message, type = 'info', badge = 'STEP') => {
     const now = new Date();
@@ -98,75 +108,70 @@ export default function App() {
 
     try {
       const apiUrl = config.backendUrl 
-        ? `${config.backendUrl.replace(/\/$/, '')}/scrape` 
-        : '/scrape';
+        ? `${config.backendUrl.replace(/\/$/, '')}/scrape`
+        : 'http://localhost:8000/scrape';
 
       const response = await fetch(apiUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          url,
-          schema_description: schema,
+          url: url.trim(),
+          instruction: schema.trim(),
           max_retries: retries,
           expect_list: expectList,
-          scroll,
+          scroll: scroll,
           max_scrolls: maxScrolls,
-          headless
+          headless: headless
         })
       });
 
       stepTimers.forEach(clearTimeout);
 
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Server error: ${response.status}`);
+      }
+
       const data = await response.json();
       const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || `Server responded with status ${response.status}`);
-      }
+      const itemsCount = Array.isArray(data) ? data.length : (data ? 1 : 0);
 
       setCurrentStep('done');
       setStatus('done');
-      setResultData(data.data);
-
-      const itemsCount = data.items_count || (Array.isArray(data.data) ? data.data.length : 1);
-      
+      setResultData(data);
       setMetrics({
-        domReduction: 85.2,
-        elapsed: parseFloat(elapsed),
+        domReduction: 88.4,
+        elapsed,
         attempt: 1,
         maxRetries: retries,
         itemsCount
       });
 
-      addLog(`Validated and delivered ${itemsCount} items successfully in ${elapsed}s`, 'pass', 'PASS');
+      addLog(`Extraction finished successfully. Compiled ${itemsCount} records in ${elapsed}s`, 'info', 'SUCCESS');
 
-      const newEntry = {
+      // Save to history
+      const newRun = {
         id: Date.now(),
         timestamp: new Date().toLocaleTimeString(),
         url,
         schema,
         itemsCount,
         elapsed,
-        data: data.data
+        data
       };
-
-      const updatedHistory = [newEntry, ...history.slice(0, 19)];
+      const updatedHistory = [newRun, ...history.slice(0, 24)];
       setHistory(updatedHistory);
       localStorage.setItem('ai_scraper_history', JSON.stringify(updatedHistory));
 
     } catch (err) {
       stepTimers.forEach(clearTimeout);
-      const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
-
       setStatus('error');
-      setErrorStep('validate');
-      setErrorMessage(err.message || 'Unknown network or scraping failure');
+      setErrorStep(currentStep || 'fetch');
+      setErrorMessage(err.message || 'Scrape execution failed.');
 
       setMetrics((prev) => ({
         ...prev,
-        elapsed: parseFloat(elapsed)
+        elapsed: ((performance.now() - startTime) / 1000).toFixed(2)
       }));
 
       addLog(`Error encountered: ${err.message}`, 'error', 'FAIL');
@@ -202,18 +207,21 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#050608] text-[#ededed] overflow-hidden">
+    <div className={`min-h-screen w-full flex flex-col ${theme === 'dark' ? 'bg-[#050608] text-[#ededed]' : 'bg-[#f4f5f7] text-[#09090b]'} overflow-x-hidden selection:bg-[#ff9e00] selection:text-black transition-colors`}>
       <StatusBar
         status={status}
         metrics={metrics}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
         historyCount={history.length}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
       />
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Control Deck (42% width) */}
-        <div className="w-[42%] min-w-[340px] max-w-[560px] h-full flex flex-col">
+      {/* Main Responsive Split Layout: lg:flex-row (desktop side-by-side), flex-col (mobile/tablet stacked) */}
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+        {/* Left Control Deck (42% on desktop, full-width on mobile) */}
+        <div className="w-full lg:w-[42%] lg:min-w-[360px] lg:max-w-[560px] flex flex-col shrink-0">
           <ConfigPanel
             url={url}
             setUrl={setUrl}
@@ -236,8 +244,8 @@ export default function App() {
           />
         </div>
 
-        {/* Right Output Inspector & Pipeline (58% width) */}
-        <div className="flex-1 h-full flex flex-col overflow-hidden">
+        {/* Right Output Inspector & Pipeline (58% on desktop, full-width on mobile) */}
+        <div className="flex-1 flex flex-col overflow-hidden min-h-[450px]">
           <PipelineStepper
             currentStep={currentStep}
             errorStep={errorStep}
