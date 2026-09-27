@@ -20,7 +20,7 @@ if not exist "%PYTHON_EXE%" (
 )
 
 echo [1/2] Starting FastAPI Backend on http://127.0.0.1:8000...
-start "AI Scraper - Backend API" cmd /k "color 0A && title AI Scraper Backend (8000) && %PYTHON_EXE% -m uvicorn api.main:app --host 127.0.0.1 --port 8000"
+start "AI Scraper - Backend API" cmd /k "color 0A && title AI Scraper Backend (8000) && %PYTHON_EXE% -m uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload"
 
 timeout /t 2 /nobreak >nul
 
