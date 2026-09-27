@@ -180,23 +180,23 @@ export default function ConfigPanel({
           </div>
         </div>
 
-        {/* BROWSER EVASION MODE ROW */}
+        {/* BROWSER MODE ROW */}
         <div className="grid grid-cols-2 gap-3 p-2.5 bg-[#16181d] border border-[#24262e] rounded-sharp">
           <div className="flex flex-col">
-            <span className="text-[10px] font-mono text-[#8a8f98]">EVASION MODE</span>
-            <span className="text-[9px] text-[#525866]">Bypass Akamai / WAFs</span>
+            <span className="text-[10px] font-mono text-[#8a8f98]">BROWSER MODE</span>
+            <span className="text-[9px] text-[#525866]">{headless ? 'Silent in background' : 'Visible popup window'}</span>
           </div>
           <div className="flex items-center justify-end">
             <button
               type="button"
               onClick={() => setHeadless && setHeadless(!headless)}
               className={`px-2 py-1 rounded-sharp text-[10px] font-mono font-bold transition-all border ${
-                !headless
+                headless
                   ? 'bg-[#10b981]/20 text-[#10b981] border-[#10b981]'
-                  : 'bg-[#111215] text-[#8a8f98] border-[#24262e]'
+                  : 'bg-[#f59e0b]/20 text-[#f59e0b] border-[#f59e0b]'
               }`}
             >
-              {!headless ? '● VISIBLE (BYPASS)' : '○ HEADLESS (FAST)'}
+              {headless ? '● HEADLESS (INVISIBLE)' : '● VISIBLE WINDOW'}
             </button>
           </div>
         </div>

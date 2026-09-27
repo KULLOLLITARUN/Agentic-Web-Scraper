@@ -16,7 +16,7 @@ export default function App() {
   const [expectList, setExpectList] = useState(true);
   const [scroll, setScroll] = useState(true);
   const [maxScrolls, setMaxScrolls] = useState(5);
-  const [headless, setHeadless] = useState(false); // default visible mode for anti-bot bypass
+  const [headless, setHeadless] = useState(true); // default invisible headless mode // default visible mode for anti-bot bypass
 
   // Runtime states
   const [status, setStatus] = useState('idle'); // idle | running | done | error
