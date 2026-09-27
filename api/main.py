@@ -13,6 +13,9 @@ import sys
 import time
 from datetime import datetime
 
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -68,13 +71,13 @@ class ScrapeRequest(BaseModel):
         example="https://quotes.toscrape.com",
         description="The target URL to scrape.",
     )
-    schema_description: str = Field(
-        ...,
-        example=(
-            "Extract all quotes. Each item should have: "
-            "text (string), author (string), tags (list of strings)"
-        ),
+    schema_description: str | None = Field(
+        default=None,
         description="Plain-English description of the data schema to extract.",
+    )
+    instruction: str | None = Field(
+        default=None,
+        description="Alias for schema_description.",
     )
     max_retries: int = Field(
         default=3,
@@ -165,10 +168,11 @@ async def scrape(request: ScrapeRequest) -> ScrapeResponse:
     """
     start = time.time()
     try:
+        target_schema = request.schema_description or request.instruction or "Extract structured data from the page"
         pipeline = ScraperPipeline(max_retries=request.max_retries)
         result = await pipeline.run(
             request.url,
-            request.schema_description,
+            target_schema,
             request.expect_list,
             scroll=request.scroll,
             max_scrolls=request.max_scrolls,

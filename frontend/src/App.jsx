@@ -116,6 +116,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url: url.trim(),
+          schema_description: schema.trim(),
           instruction: schema.trim(),
           max_retries: retries,
           expect_list: expectList,
@@ -129,16 +130,29 @@ export default function App() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Server error: ${response.status}`);
+        let errMsg = 'Scrape execution failed';
+        if (typeof errorData.detail === 'string') {
+          errMsg = errorData.detail;
+        } else if (Array.isArray(errorData.detail)) {
+          errMsg = errorData.detail.map(d => d.msg || d.message || JSON.stringify(d)).join('; ');
+        } else if (errorData.error) {
+          errMsg = typeof errorData.error === 'string' ? errorData.error : JSON.stringify(errorData.error);
+        } else {
+          errMsg = `Server returned HTTP ${response.status}`;
+        }
+        throw new Error(errMsg);
       }
 
-      const data = await response.json();
-      const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
-      const itemsCount = Array.isArray(data) ? data.length : (data ? 1 : 0);
+      const resJson = await response.json();
+      const extractedData = resJson.data !== undefined ? resJson.data : resJson;
+      const elapsed = resJson.elapsed_seconds ? String(resJson.elapsed_seconds) : ((performance.now() - startTime) / 1000).toFixed(2);
+      const itemsCount = resJson.items_count !== undefined 
+        ? resJson.items_count 
+        : (Array.isArray(extractedData) ? extractedData.length : (extractedData ? 1 : 0));
 
       setCurrentStep('done');
       setStatus('done');
-      setResultData(data);
+      setResultData(extractedData);
       setMetrics({
         domReduction: 88.4,
         elapsed,
@@ -157,7 +171,7 @@ export default function App() {
         schema,
         itemsCount,
         elapsed,
-        data
+        data: extractedData
       };
       const updatedHistory = [newRun, ...history.slice(0, 24)];
       setHistory(updatedHistory);
