@@ -23,27 +23,27 @@ export default function InspectorPanel({
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(
-        /("(\u[a-zA-Z0-9]{4}|\[^u]|[^\"])*"(\s*:)?|(true|false|null)|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
         (match) => {
-          let cls = 'text-[#e6e8ee]';
+          let cls = 'text-white';
           if (/^"/.test(match)) {
             if (/:$/.test(match)) {
-              cls = 'text-[#f59e0b] font-medium';
+              cls = 'text-[#ff9e00] font-bold';
             } else {
-              cls = 'text-[#10b981]';
+              cls = 'text-[#00ff88]';
             }
           } else if (/true|false/.test(match)) {
-            cls = 'text-[#38bdf8] font-semibold';
+            cls = 'text-[#00d8ff] font-bold';
           } else if (/null/.test(match)) {
-            cls = 'text-[#717789] italic';
+            cls = 'text-[#788094] italic';
           } else {
-            cls = 'text-[#cbd0df] font-mono';
+            cls = 'text-white font-mono';
           }
           return `<span class="${cls}">${match}</span>`;
         }
       );
 
-    return <pre dangerouslySetInnerHTML={{ __html: formatted }} className="font-mono text-xs leading-relaxed select-text" />;
+    return <pre dangerouslySetInnerHTML={{ __html: formatted }} className="font-mono text-xs leading-relaxed select-text p-3 bg-[#050608]" />;
   };
 
   const handleCopyJson = () => {
@@ -54,12 +54,12 @@ export default function InspectorPanel({
   };
 
   const handleCopyCurl = () => {
-    const curlCmd = `curl -X POST http://localhost:8000/scrape \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "${url || 'https://quotes.toscrape.com'}",
-    "schema_description": "${(schema || '').replace(/"/g, '\"')}",
-    "max_retries": 3
+    const curlCmd = `curl -X POST http://localhost:8000/scrape \\
+  -H "Content-Type: application/json" \\
+  -d '{\\
+    "url": "${url || 'https://quotes.toscrape.com'}",\\
+    "schema_description": "${(schema || '').replace(/"/g, '\\"')}",\\
+    "max_retries": 3\\
   }'`;
     navigator.clipboard.writeText(curlCmd);
     setCurlCopied(true);
@@ -87,7 +87,7 @@ export default function InspectorPanel({
     const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = blobUrl;
-    a.download = `scraped_payload_${Date.now()}.csv`;
+    a.download = `scraped_dataset_${Date.now()}.csv`;
     a.click();
     URL.revokeObjectURL(blobUrl);
   };
@@ -109,116 +109,114 @@ export default function InspectorPanel({
     : [];
 
   return (
-    <div className="h-full flex flex-col bg-[#0b0c10] select-none text-[#ededed]">
+    <div className="h-full flex flex-col bg-[#07080b] select-none text-[#ededed]">
       {/* Header Deck */}
-      <div className="h-9 px-3.5 flex items-center justify-between border-b border-[#1f222d] bg-[#07080b]">
+      <div className="h-10 px-4 flex items-center justify-between border-b-2 border-[#1c1e26] bg-[#0c0e14]">
         <div className="flex items-center gap-2">
-          <span className="w-1.5 h-1.5 bg-[#10b981] rounded-[1px]" />
-          <span className="font-mono text-[10px] font-bold tracking-widest text-[#cbd0df] uppercase">
-            OUTPUT_INSPECTOR // BUFFER
+          <span className="w-2 h-2 bg-[#00ff88]" />
+          <span className="font-mono text-xs font-black tracking-widest text-white uppercase">
+            OUTPUT // DATA BUFFER
           </span>
         </div>
 
-        {/* View Switcher Tabs */}
-        <div className="flex items-center gap-1">
+        {/* View Switcher */}
+        <div className="flex items-center gap-1.5">
           <button
             onClick={() => setActiveTab('table')}
-            className={`px-2 py-0.5 text-[10px] font-mono rounded-[2px] flex items-center gap-1.5 transition-all border ${
+            className={`px-3 py-1 text-[10px] font-mono font-black border transition-all ${
               activeTab === 'table'
-                ? 'bg-[#181a24] text-[#f59e0b] border-[#f59e0b]/50 shadow-[0_0_8px_rgba(245,158,11,0.15)] font-bold'
-                : 'text-[#717789] hover:text-[#ededed] border-transparent'
+                ? 'bg-[#ff9e00] text-black border-[#ff9e00]'
+                : 'bg-[#141620] text-[#788094] border-[#222634] hover:text-white'
             }`}
           >
-            <TableIcon size={11} />
-            BENTO_TABLE
+            TABLE VIEW
           </button>
 
           <button
             onClick={() => setActiveTab('raw')}
-            className={`px-2 py-0.5 text-[10px] font-mono rounded-[2px] flex items-center gap-1.5 transition-all border ${
+            className={`px-3 py-1 text-[10px] font-mono font-black border transition-all ${
               activeTab === 'raw'
-                ? 'bg-[#181a24] text-[#f59e0b] border-[#f59e0b]/50 shadow-[0_0_8px_rgba(245,158,11,0.15)] font-bold'
-                : 'text-[#717789] hover:text-[#ededed] border-transparent'
+                ? 'bg-[#ff9e00] text-black border-[#ff9e00]'
+                : 'bg-[#141620] text-[#788094] border-[#222634] hover:text-white'
             }`}
           >
-            <Code2 size={11} />
-            RAW_JSON
+            RAW JSON
           </button>
         </div>
       </div>
 
       {/* Filter & Metric Bar */}
-      <div className="h-8 px-3.5 bg-[#0e0f14] border-b border-[#1f222d] flex items-center justify-between gap-3 text-xs">
+      <div className="h-9 px-4 bg-[#0e1017] border-b border-[#1c1e26] flex items-center justify-between gap-4 text-xs">
         <div className="flex items-center gap-2 flex-1 max-w-sm">
-          <Search size={11} className="text-[#454a58]" />
+          <Search size={12} className="text-[#555c70]" />
           <input
             type="text"
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
             placeholder="Search records or filter keys..."
-            className="w-full bg-transparent text-[11px] font-mono text-[#e6e8ee] placeholder-[#454a58] outline-none"
+            className="w-full bg-transparent text-xs font-mono text-white placeholder-[#454c60] outline-none"
           />
           {filterText && (
             <button 
               onClick={() => setFilterText('')} 
-              className="text-[9px] font-mono text-[#555a68] hover:text-[#ededed] transition-colors"
+              className="text-[9px] font-mono font-bold text-[#555c70] hover:text-white transition-colors"
             >
               [RESET]
             </button>
           )}
         </div>
 
-        <div className="flex items-center gap-2 text-[10px] font-mono text-[#717789]">
-          <span>RECORD_COUNT:</span>
-          <span className="text-[#e6e8ee] font-bold tabular-nums border border-[#1f222d] px-1 rounded-[2px] bg-[#12131a]">
+        <div className="flex items-center gap-2 text-[10px] font-mono">
+          <span className="text-[#788094] font-bold">COMPILED RECORDS:</span>
+          <span className="bg-[#141620] border border-[#222634] text-white font-black px-1.5 py-0.5 tabular-nums">
             {items.length}
           </span>
         </div>
       </div>
 
       {/* Main Viewport */}
-      <div className="flex-1 overflow-auto p-3.5 bg-[#07080a] studio-grid">
+      <div className="flex-1 overflow-auto p-4 bg-[#050608]">
         {error ? (
-          <div className="p-3.5 border border-[#ff3355]/40 bg-[#ff3355]/10 rounded-[2px] text-xs font-mono text-[#ff3355] space-y-1.5">
-            <div className="font-bold uppercase tracking-wider flex items-center gap-2 text-[11px]">
-              <span>[!] PIPELINE_EXECUTION_FAULT</span>
+          <div className="p-4 border-2 border-[#ff3355] bg-[#ff3355]/10 text-xs font-mono text-[#ff3355] space-y-2">
+            <div className="font-black uppercase tracking-wider flex items-center gap-2">
+              <span>⚠ PIPELINE EXECUTION FAULT</span>
             </div>
-            <p className="text-[#e6e8ee] text-[11px] leading-relaxed whitespace-pre-wrap">{error}</p>
+            <p className="text-white whitespace-pre-wrap">{error}</p>
           </div>
         ) : !data && !isLoading ? (
-          <div className="h-full flex flex-col items-center justify-center text-[#454a58] gap-2 select-none">
-            <Terminal size={24} className="opacity-40" />
-            <span className="text-[11px] font-mono tracking-widest text-[#717789] uppercase">
-              AWAITING_INPUT_DISPATCH
+          <div className="h-full flex flex-col items-center justify-center text-[#454c60] gap-2 select-none">
+            <Terminal size={32} className="opacity-30 text-[#ff9e00]" />
+            <span className="text-xs font-mono font-black tracking-widest text-[#788094] uppercase">
+              AWAITING EXTRACTION DISPATCH
             </span>
-            <span className="text-[10px] font-mono text-[#454a58]">
-              Target URL & schema configured. Press Ctrl+Enter to trigger pipeline.
+            <span className="text-[11px] font-mono text-[#454c60]">
+              Configure target URL & click Run Extraction Sequence
             </span>
           </div>
         ) : isLoading ? (
-          <div className="h-full flex flex-col items-center justify-center text-[#f59e0b] gap-2.5">
-            <div className="w-5 h-5 border-2 border-[#f59e0b] border-t-transparent rounded-full animate-spin" />
-            <span className="text-[11px] font-mono tracking-widest uppercase animate-pulse">
-              EXTRACTING_&_VALIDATING...
+          <div className="h-full flex flex-col items-center justify-center text-[#ff9e00] gap-3">
+            <div className="w-8 h-8 border-4 border-[#ff9e00] border-t-transparent rounded-none animate-spin" />
+            <span className="text-xs font-mono font-black tracking-widest uppercase animate-pulse">
+              STREAMING & AUDITING ENTITIES...
             </span>
           </div>
         ) : activeTab === 'raw' ? (
-          <div className="overflow-x-auto select-text p-2 bg-[#0c0d12] border border-[#1f222d] rounded-[2px]">
+          <div className="border border-[#1c1e26] overflow-x-auto select-text">
             {renderHighlightedJson(filteredData)}
           </div>
         ) : (
-          <div className="overflow-x-auto select-text bg-[#0c0d12] border border-[#1f222d] rounded-[2px]">
+          <div className="border border-[#1c1e26] overflow-x-auto select-text bg-[#08090d]">
             {tableHeaders.length === 0 ? (
-              <div className="p-3 text-[11px] font-mono text-[#555a68] italic">
-                Payload structure does not conform to array of entities.
+              <div className="p-4 text-xs font-mono text-[#555c70] italic">
+                Payload format does not contain tabular records.
               </div>
             ) : (
-              <table className="w-full text-left border-collapse text-[11px] font-mono">
+              <table className="w-full text-left border-collapse text-xs font-mono">
                 <thead>
-                  <tr className="border-b border-[#1f222d] bg-[#12131a] text-[#717789]">
-                    <th className="py-2 px-2.5 w-10 text-[#454a58] font-bold">#</th>
+                  <tr className="border-b-2 border-[#1c1e26] bg-[#0f1118] text-[#788094]">
+                    <th className="py-2.5 px-3 w-12 text-[#454c60] font-black">#</th>
                     {tableHeaders.map((h) => (
-                      <th key={h} className="py-2 px-2.5 text-[#f59e0b] font-bold tracking-wider uppercase">
+                      <th key={h} className="py-2.5 px-3 text-[#ff9e00] font-black tracking-wider uppercase">
                         {h}
                       </th>
                     ))}
@@ -226,20 +224,20 @@ export default function InspectorPanel({
                 </thead>
                 <tbody className="divide-y divide-[#181a24]">
                   {items.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-[#151722] transition-colors">
-                      <td className="py-2 px-2.5 text-[#454a58] tabular-nums font-bold">{idx + 1}</td>
+                    <tr key={idx} className="hover:bg-[#12141c] transition-colors">
+                      <td className="py-2.5 px-3 text-[#555c70] font-black tabular-nums">{idx + 1}</td>
                       {tableHeaders.map((h) => {
                         const cellVal = row[h];
                         
-                        // Render lists/arrays as crisp micro-tags
+                        // Render lists as high-contrast neon badges
                         if (Array.isArray(cellVal)) {
                           return (
-                            <td key={h} className="py-2 px-2.5 max-w-sm">
+                            <td key={h} className="py-2.5 px-3 max-w-sm">
                               <div className="flex flex-wrap gap-1">
                                 {cellVal.map((tag, tIdx) => (
                                   <span 
                                     key={tIdx} 
-                                    className="px-1 py-0.2 bg-[#191b26] border border-[#252838] text-[#a0a6b8] text-[9px] rounded-[2px]"
+                                    className="px-1.5 py-0.5 bg-[#00ff88]/10 border border-[#00ff88]/40 text-[#00ff88] text-[10px] font-bold"
                                   >
                                     {String(tag)}
                                   </span>
@@ -254,7 +252,7 @@ export default function InspectorPanel({
                           : String(cellVal ?? '');
 
                         return (
-                          <td key={h} className="py-2 px-2.5 text-[#e6e8ee] whitespace-pre-wrap max-w-xs truncate">
+                          <td key={h} className="py-2.5 px-3 text-white whitespace-pre-wrap max-w-xs truncate">
                             {displayVal}
                           </td>
                         );
@@ -269,34 +267,34 @@ export default function InspectorPanel({
       </div>
 
       {/* Action Footer */}
-      <div className="h-9 px-3.5 border-t border-[#1f222d] bg-[#07080b] flex items-center justify-between text-xs">
-        <div className="flex items-center gap-1.5">
+      <div className="h-10 px-4 border-t-2 border-[#1c1e26] bg-[#0c0e14] flex items-center justify-between text-xs">
+        <div className="flex items-center gap-2">
           <button
             onClick={handleCopyJson}
             disabled={!data}
-            className="h-6 px-2.5 rounded-[2px] border border-[#1f222d] hover:border-[#f59e0b] hover:bg-[#12131c] text-[#cbd0df] disabled:opacity-30 disabled:hover:border-[#1f222d] disabled:hover:bg-transparent flex items-center gap-1.5 transition-all font-mono text-[10px]"
+            className="h-7 px-3 bg-[#11131a] hover:bg-[#181b24] border border-[#222634] hover:border-[#ff9e00] text-white disabled:opacity-30 disabled:hover:border-[#222634] flex items-center gap-1.5 transition-all font-mono text-[10px] font-bold active:translate-y-[1px]"
           >
-            {copied ? <Check size={11} className="text-[#10b981]" /> : <Copy size={11} className="text-[#717789]" />}
-            <span>{copied ? 'COPIED' : 'COPY_JSON'}</span>
+            {copied ? <Check size={12} className="text-[#00ff88]" /> : <Copy size={12} className="text-[#ff9e00]" />}
+            <span>{copied ? 'COPIED' : 'COPY JSON'}</span>
           </button>
 
           <button
             onClick={handleExportCsv}
             disabled={!data || !Array.isArray(data)}
-            className="h-6 px-2.5 rounded-[2px] border border-[#1f222d] hover:border-[#f59e0b] hover:bg-[#12131c] text-[#cbd0df] disabled:opacity-30 disabled:hover:border-[#1f222d] disabled:hover:bg-transparent flex items-center gap-1.5 transition-all font-mono text-[10px]"
+            className="h-7 px-3 bg-[#11131a] hover:bg-[#181b24] border border-[#222634] hover:border-[#ff9e00] text-white disabled:opacity-30 disabled:hover:border-[#222634] flex items-center gap-1.5 transition-all font-mono text-[10px] font-bold active:translate-y-[1px]"
           >
-            <Download size={11} className="text-[#717789]" />
-            <span>EXPORT_CSV</span>
+            <Download size={12} className="text-[#ff9e00]" />
+            <span>EXPORT CSV</span>
           </button>
         </div>
 
         <button
           onClick={handleCopyCurl}
-          className="h-6 px-2.5 rounded-[2px] border border-[#1f222d] hover:border-[#f59e0b] hover:bg-[#12131c] text-[#717789] hover:text-[#cbd0df] flex items-center gap-1.5 transition-all font-mono text-[10px]"
+          className="h-7 px-3 bg-[#11131a] hover:bg-[#181b24] border border-[#222634] hover:border-[#ff9e00] text-[#8890a4] hover:text-white flex items-center gap-1.5 transition-all font-mono text-[10px] font-bold active:translate-y-[1px]"
           title="Copy equivalent cURL request"
         >
-          <Terminal size={11} />
-          <span>{curlCopied ? 'cURL_COPIED' : 'COPY_cURL'}</span>
+          <Terminal size={12} className="text-[#ff9e00]" />
+          <span>{curlCopied ? 'cURL COPIED' : 'COPY cURL'}</span>
         </button>
       </div>
     </div>

@@ -202,7 +202,7 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#111215] text-[#ededed] overflow-hidden">
+    <div className="h-screen w-screen flex flex-col bg-[#050608] text-[#ededed] overflow-hidden">
       <StatusBar
         status={status}
         metrics={metrics}
