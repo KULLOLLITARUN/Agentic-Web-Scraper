@@ -114,3 +114,54 @@ When scraping the modern web, websites fall into two distinct architectural cate
 | **Job Market Data** | `news.ycombinator.com/jobs` | *"Find AI roles: company name, title"* | ✅ **30 jobs extracted** in one pass |
 | **Ghost Data Test** | `quotes.toscrape.com` | *"Extract company revenue and address"* | 🛡️ **Refused to hallucinate**; failed gracefully |
 | **Type Clash Test** | `books.toscrape.com` | *"Extract price as strict integer"* | 🔄 **Caught decimal conflict** and self-healed |
+---
+
+## 7. Future Production Roadmap: Enterprise Scaling (1,000+ Pages)
+
+When scaling extraction from interactive workbench queries to massive enterprise datasets (1,000+ pages, 20,000+ records), the architecture transitions from synchronous execution to a distributed pipeline.
+
+### Architectural Blueprint for High-Scale Crawling:
+
+```
+┌─────────────────┐      1. Enqueue Job       ┌──────────────────────┐
+│  Workbench UI   │ ────────────────────────► │  FastAPI Job Server  │
+└────────┬────────┘                           └──────────┬───────────┘
+         │                                               │
+         │ 2. Poll Status:                               │ 3. Dispatch Tasks
+         │    "Page 450/1000 (9,000 records)"            ▼
+         │                                    ┌──────────────────────┐
+         └─────────────────────────────────── │  Task Queue (Redis)  │
+                                              └──────────┬───────────┘
+                                                         │
+                          ┌──────────────────────────────┼──────────────────────────────┐
+                          ▼                              ▼                              ▼
+                    [ Worker 1 ]                   [ Worker 2 ]                   [ Worker 3 ]
+                    Pages 1–333                    Pages 334–666                  Pages 667–1000
+                          │                              │                              │
+                          └──────────────────────────────┼──────────────────────────────┘
+                                                         ▼
+                                          ┌──────────────────────────────┐
+                                          │ Stream to Database           │
+                                          │ (PostgreSQL / SQLite / S3)   │
+                                          └──────────────────────────────┘
+```
+
+### Key Scaling Mechanisms:
+
+1. **Decoupled Asynchronous Workers (Celery / Redis / Temporal)**
+   * **Problem:** 1,000 pages take 45–60 minutes. Browser HTTP connections time out after 60 seconds.
+   * **Solution:** The user submits a crawl job and receives a `job_id` in 100ms. Distributed background workers crawl concurrently while the frontend polls live progress.
+
+2. **Chunked Database Streaming (Zero-Loss Fault Tolerance)**
+   * **Problem:** Storing 20,000 items in memory risks losing the entire dataset if network drops at page 950.
+   * **Solution:** Records are streamed into PostgreSQL or SQLite after each page is extracted. If interrupted, the job resumes from the last confirmed page offset.
+
+3. **Hybrid Extraction Strategy (99% LLM Cost Reduction)**
+   * **Problem:** Sending 1,000 pages to Groq consumes 2,000,000+ tokens and can hit rate limits.
+   * **Solution:**
+     * **Page 1:** The Groq LLM inspects the page, extracts the entities, and reverse-engineers the structural pattern.
+     * **Pages 2–1000:** The pipeline switches to compiled Python extractors (running in **0.01 seconds at $0 cost**).
+     * **Auto Self-Healing:** The LLM re-awakens *only* if the layout changes or validation confidence drops below threshold.
+
+4. **Rotating Residential Proxies & Jittered Politeness**
+   * Incorporate rotating IP pools (e.g. Bright Data, Oxylabs) with randomized human delays (1.5s–3.5s) to distribute requests across IP blocks and prevent WAF triggers.
