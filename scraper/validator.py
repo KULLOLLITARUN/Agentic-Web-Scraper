@@ -46,13 +46,15 @@ class Validator:
         return raw.strip()
 
     def repair_truncated_json(self, text: str) -> Any:
-        """Attempt to repair JSON that was cut off mid-stream due to max_tokens limit."""
+        """Attempt to repair JSON that was cut off mid-stream due to token limits."""
         text = text.strip()
 
         # Case 1: Array of objects where the last object was cut off mid-way
         last_brace = text.rfind("}")
         if last_brace != -1:
             truncated = text[:last_brace + 1].strip()
+            if truncated.endswith(","):
+                truncated = truncated[:-1].strip()
             if truncated.startswith("[") and not truncated.endswith("]"):
                 truncated += "]"
             try:
@@ -63,16 +65,18 @@ class Validator:
                 pass
 
         # Case 2: Incomplete string near end, try closing string and braces
-        for closer in ['"]}', '"}', '"]', '"', '}']:
+        for closer in ['"]}', '"}', '"]', '"', '}', ']']:
             try:
-                return json.loads(text + closer)
+                parsed = json.loads(text + closer)
+                if isinstance(parsed, (list, dict)) and len(parsed) > 0:
+                    return parsed
             except Exception:
                 continue
 
         return None
 
     def parse(self, raw_response: str) -> Any:
-        """Clean and parse *raw_response* as JSON with auto-repair on truncation.
+        """Clean and parse *raw_response* as JSON.
 
         Args:
             raw_response: The raw LLM output.
@@ -87,7 +91,6 @@ class Validator:
         try:
             return json.loads(cleaned)
         except json.JSONDecodeError as e:
-            # Self-healing: Attempt to recover all completed items if response was truncated
             repaired = self.repair_truncated_json(cleaned)
             if repaired is not None:
                 return repaired
