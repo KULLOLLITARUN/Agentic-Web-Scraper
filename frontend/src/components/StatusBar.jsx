@@ -11,63 +11,73 @@ export default function StatusBar({
   const isRunning = status === 'running';
 
   return (
-    <header className="h-10 bg-[#0d0e11] border-b border-[#24262e] px-4 flex items-center justify-between text-xs select-none">
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${isRunning ? 'bg-[#f59e0b] led-pulse' : 'bg-[#10b981]'}`} />
-          <span className="font-bold text-[#ededed] tracking-wider uppercase">
-            {isRunning ? 'PIPELINE ACTIVE' : 'SYSTEM READY'}
+    <header className="h-9 bg-[#0b0c10] border-b border-[#1f222d] px-3.5 flex items-center justify-between text-xs select-none relative z-20">
+      {/* Left: Hardware Status Bus */}
+      <div className="flex items-center gap-3">
+        {/* System Heartbeat */}
+        <div className="flex items-center gap-2 pr-2 border-r border-[#1f222d]">
+          <span 
+            className={`w-1.5 h-1.5 rounded-full transition-colors ${
+              isRunning ? 'bg-[#f59e0b] led-pulse' : 'bg-[#10b981]'
+            }`} 
+          />
+          <span className="font-mono text-[11px] font-bold text-[#e6e8ee] tracking-wider uppercase">
+            {isRunning ? 'EXEC_BUS_ACTIVE' : 'SYSTEM_READY'}
           </span>
-          <span className="text-[#525866] font-normal">v1.0.4</span>
-        </div>
-
-        <div className="h-3 w-px bg-[#24262e]" />
-
-        <div className="flex items-center gap-1.5 text-[#8a8f98]">
-          <span className="text-[#525866]">DOM REDUCTION:</span>
-          <span className="font-mono text-[#ededed] font-medium tabular-nums">
-            {metrics.domReduction ? `${metrics.domReduction}%` : '85.2%'}
-          </span>
-        </div>
-
-        <div className="h-3 w-px bg-[#24262e] hidden sm:block" />
-
-        <div className="hidden sm:flex items-center gap-1.5 text-[#8a8f98]">
-          <span className="text-[#525866]">LATENCY:</span>
-          <span className="font-mono text-[#ededed] font-medium tabular-nums">
-            {metrics.elapsed ? `${metrics.elapsed}s` : '1.92s'}
+          <span className="font-mono text-[10px] text-[#555a68] border border-[#1f222d] px-1 py-0.2 rounded-[2px]">
+            v1.0.4
           </span>
         </div>
 
-        <div className="h-3 w-px bg-[#24262e] hidden md:block" />
+        {/* Telemetry Metric Readouts */}
+        <div className="flex items-center gap-4 text-[11px] font-mono text-[#8a90a0]">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[#555a68]">DOM_REDUCE:</span>
+            <span className="text-[#e6e8ee] font-medium tabular-nums">
+              {metrics.domReduction ? `${metrics.domReduction}%` : '85.2%'}
+            </span>
+          </div>
 
-        <div className="hidden md:flex items-center gap-1.5 text-[#8a8f98]">
-          <span className="text-[#525866]">RETRIES:</span>
-          <span className="font-mono text-[#ededed] font-medium tabular-nums">
-            {metrics.attempt || 1}/{metrics.maxRetries || 3}
-          </span>
-        </div>
+          <div className="h-2.5 w-px bg-[#1f222d] hidden sm:block" />
 
-        <div className="h-3 w-px bg-[#24262e] hidden lg:block" />
+          <div className="hidden sm:flex items-center gap-1.5">
+            <span className="text-[#555a68]">LATENCY:</span>
+            <span className="text-[#e6e8ee] font-medium tabular-nums">
+              {metrics.elapsed ? `${metrics.elapsed}s` : '1.92s'}
+            </span>
+          </div>
 
-        <div className="hidden lg:flex items-center gap-1.5 text-[#8a8f98]">
-          <span className="text-[#525866]">ITEMS:</span>
-          <span className="font-mono text-[#f59e0b] font-medium tabular-nums">
-            {metrics.itemsCount || 0}
-          </span>
+          <div className="h-2.5 w-px bg-[#1f222d] hidden md:block" />
+
+          <div className="hidden md:flex items-center gap-1.5">
+            <span className="text-[#555a68]">CYCLE:</span>
+            <span className="text-[#e6e8ee] font-medium tabular-nums">
+              {metrics.attempt || 1}/{metrics.maxRetries || 3}
+            </span>
+          </div>
+
+          <div className="h-2.5 w-px bg-[#1f222d] hidden lg:block" />
+
+          <div className="hidden lg:flex items-center gap-1.5">
+            <span className="text-[#555a68]">YIELD:</span>
+            <span className="text-[#f59e0b] font-bold tabular-nums">
+              {metrics.itemsCount || 0} ITEMS
+            </span>
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* Right: Action Controls */}
+      <div className="flex items-center gap-1.5">
         <button
           onClick={onOpenHistory}
-          className="h-7 px-2.5 rounded-sharp border border-[#24262e] hover:border-[#3b404d] hover:bg-[#16181d] text-[#8a8f98] hover:text-[#ededed] flex items-center gap-1.5 transition-colors text-xs"
-          title="Extraction History"
+          className="h-6 px-2 rounded-[2px] border border-[#1f222d] hover:border-[#353a4b] hover:bg-[#14161f] text-[#8a90a0] hover:text-[#e6e8ee] flex items-center gap-1.5 transition-all text-[11px] font-mono"
+          title="Execution Audit Log"
         >
-          <History size={13} className="text-[#8a8f98]" />
+          <History size={11} className="text-[#717789]" />
           <span>RUNS</span>
           {historyCount > 0 && (
-            <span className="bg-[#24262e] text-[#ededed] px-1 py-0.2 rounded-sharp text-[10px] tabular-nums">
+            <span className="bg-[#1c1f2b] text-[#cbd0df] px-1 py-0.2 rounded-[2px] text-[9px] tabular-nums font-bold">
               {historyCount}
             </span>
           )}
@@ -75,10 +85,10 @@ export default function StatusBar({
 
         <button
           onClick={onOpenSettings}
-          className="h-7 w-7 rounded-sharp border border-[#24262e] hover:border-[#3b404d] hover:bg-[#16181d] text-[#8a8f98] hover:text-[#ededed] flex items-center justify-center transition-colors"
-          title="Configuration Settings"
+          className="h-6 w-6 rounded-[2px] border border-[#1f222d] hover:border-[#353a4b] hover:bg-[#14161f] text-[#8a90a0] hover:text-[#e6e8ee] flex items-center justify-center transition-all"
+          title="Workbench Configuration"
         >
-          <Settings size={13} />
+          <Settings size={12} />
         </button>
       </div>
     </header>
