@@ -220,7 +220,6 @@ class Navigator:
             has_touch=False,
             locale="en-US",
             timezone_id="Asia/Kolkata",
-            extra_http_headers=DEFAULT_HEADERS,
             java_script_enabled=True,
         )
 

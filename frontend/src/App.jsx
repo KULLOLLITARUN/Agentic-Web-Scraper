@@ -112,7 +112,8 @@ export default function App() {
           max_retries: retries,
           expect_list: expectList,
           scroll,
-          max_scrolls: maxScrolls
+          max_scrolls: maxScrolls,
+          headless
         })
       });
 

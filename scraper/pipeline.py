@@ -83,10 +83,11 @@ class ScraperPipeline:
         """
         # ── Step 1: Fetch ────────────────────────────────────────────────────
         logger.info(
-            "[1/5] Navigator: Fetching %s (scroll=%s, max_scrolls=%d)",
+            "[1/5] Navigator: Fetching %s (scroll=%s, max_scrolls=%d, headless=%s)",
             url,
             scroll,
             max_scrolls,
+            headless,
         )
         async with Navigator(headless=headless) as nav:
             raw_html: str = await nav.fetch(
