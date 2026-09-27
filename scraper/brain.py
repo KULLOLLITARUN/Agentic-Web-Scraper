@@ -70,7 +70,7 @@ class Brain:
                 "Extract again and fix the issue.",
             ]
 
-        user_parts.append("\nExtract the data now and return ONLY valid JSON.")
+        user_parts.append("\nExtract up to 20 matched items as a valid JSON array. Ensure every opened object and string is completely closed.")
         user_prompt = "\n".join(user_parts)
 
         last_error = None
@@ -78,7 +78,7 @@ class Brain:
         # Iterate through model pool with automatic failover
         for model_name in MODELS:
             # Scale tokens conservatively for qwen, higher for gpt-oss
-            token_budget = 800 if "qwen" in model_name else 1500
+            token_budget = 800 if "qwen" in model_name else 2500
 
             try:
                 logger.info("Attempting extraction with model %s (budget=%d tokens)...", model_name, token_budget)
