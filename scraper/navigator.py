@@ -6,6 +6,7 @@ cookie-banner auto-dismissal, and dynamic infinite-scroll / lazy-loading support
 """
 
 import logging
+import re
 from typing import Any
 from playwright.async_api import (
     async_playwright,
@@ -85,6 +86,15 @@ window.navigator.permissions.query = (parameters) => (
 """
 
 COOKIE_TEXTS = ["Accept All", "Accept", "I Agree", "Got it", "Allow all cookies", "OK", "Dismiss"]
+# Whole-label match, so "OK" doesn't hit buttons like "Book now".
+COOKIE_LABEL_RE = re.compile(
+    r"^\s*(?:" + "|".join(re.escape(t) for t in COOKIE_TEXTS) + r")\s*$", re.IGNORECASE
+)
+
+# Extra settle time for client-side rendering, depending on whether the
+# network went idle (page is likely done) or stayed busy (SPA still hydrating).
+SETTLE_MS_AFTER_IDLE = 500
+SETTLE_MS_STILL_BUSY = 3500
 
 
 class Navigator:
@@ -129,21 +139,26 @@ class Navigator:
             await self._playwright.stop()
 
     async def _dismiss_cookie_banner(self, page: Page) -> None:
-        """Attempt to click common cookie-consent buttons without interrupting flow."""
-        for text in COOKIE_TEXTS:
-            try:
-                await page.get_by_text(text, exact=True).first.click(timeout=1500)
-                logger.debug("Dismissed cookie banner with text: '%s'", text)
+        """Click a visible cookie-consent button, if there is one.
+
+        All labels are checked in a single query that doesn't wait, so pages
+        without a banner cost milliseconds instead of a timeout per label.
+        """
+        candidates = (
+            page.get_by_role("button", name=COOKIE_LABEL_RE)
+            .or_(page.get_by_role("link", name=COOKIE_LABEL_RE))
+            .or_(page.get_by_text(COOKIE_LABEL_RE))
+            .filter(visible=True)
+        )
+        try:
+            if await candidates.count() == 0:
                 return
-            except Exception:
-                pass
-            try:
-                locator = page.get_by_role("button", name=text)
-                await locator.first.click(timeout=1500)
-                logger.debug("Dismissed cookie banner button role: '%s'", text)
-                return
-            except Exception:
-                pass
+            target = candidates.first
+            label = (await target.inner_text(timeout=1000)).strip()
+            await target.click(timeout=1500)
+            logger.debug("Dismissed cookie banner: '%s'", label)
+        except Exception as e:
+            logger.debug("Cookie banner click skipped: %s", e)
 
     async def _scroll_page(
         self,
@@ -226,18 +241,20 @@ class Navigator:
 
         try:
             # Resilient navigation: wait for domcontentloaded first, then try networkidle
+            network_idle = False
             try:
                 await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
                 # Give a short window for network to settle without hanging forever on background websockets
                 try:
                     await page.wait_for_load_state("networkidle", timeout=5000)
+                    network_idle = True
                 except Exception:
                     pass
             except PlaywrightTimeoutError:
                 logger.warning("domcontentloaded timed out for %s; attempting to read partial DOM", url)
 
             # Allow single-page application hydration (e.g. Next.js / React splash screens)
-            await page.wait_for_timeout(3500)
+            await page.wait_for_timeout(SETTLE_MS_AFTER_IDLE if network_idle else SETTLE_MS_STILL_BUSY)
 
             # Auto-dismiss cookie dialogs
             await self._dismiss_cookie_banner(page)
