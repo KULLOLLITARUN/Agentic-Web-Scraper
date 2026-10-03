@@ -120,6 +120,11 @@ export default function App() {
         })
       });
 
+      if (response.status === 404) {
+        throw new Error(
+          `The backend at ${base} has no /scrape/stream endpoint, so it is running older code. Restart the backend to pick up the latest version.`
+        );
+      }
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         let errMsg = `Server returned HTTP ${response.status}`;
