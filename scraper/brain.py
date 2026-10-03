@@ -80,6 +80,8 @@ class Brain:
 
         user_parts.append(
             "\nExtract EVERY matching item on the page, in page order. "
+            "Give every item every field, using null when the page has no value, "
+            "and use JSON numbers/booleans (not strings) for numeric/boolean fields. "
             "Return compact JSON on a single line with no indentation, "
             "and make sure every open object and array is closed."
         )

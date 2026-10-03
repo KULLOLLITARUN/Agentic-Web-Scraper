@@ -93,3 +93,22 @@ def test_runs_without_a_callback():
     p._brain = FakeBrain(['[{"name": "Item one"}]'])
 
     assert asyncio.run(p.run("https://example.com", "name (string)"))["items_count"] == 1
+
+
+def test_field_mismatch_is_retried_with_the_problems():
+    result, events, _ = run(['[{"title": "wrong key"}]', '[{"name": "Item one"}]'])
+
+    retries = [e for e in events if e["type"] == "retry"]
+    assert len(retries) == 1
+    assert 'missing "name"' in retries[0]["error"]
+    assert result["data"] == [{"name": "Item one"}]
+    assert result["warnings"] == []
+
+
+def test_field_mismatch_on_last_attempt_keeps_data_with_warning():
+    result, events, _ = run(['[{"name": 5, "x": 1}, {"x": 2}]'], max_retries=1)
+
+    assert result["data"] == [{"name": "5", "x": 1}, {"x": 2}]
+    assert len(result["warnings"]) == 1
+    assert 'item 2: missing "name"' in result["warnings"][0]
+    assert [e["message"] for e in events if e["type"] == "warning"] == result["warnings"]

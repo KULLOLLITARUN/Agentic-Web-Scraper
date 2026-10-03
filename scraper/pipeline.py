@@ -13,7 +13,7 @@ from typing import Any, Callable
 from scraper.navigator import Navigator
 from scraper.distiller import Distiller
 from scraper.brain import Brain
-from scraper.validator import Validator, ValidationError
+from scraper.validator import SchemaMismatchError, Validator, ValidationError
 
 logger = logging.getLogger("ai_scraper")
 
@@ -164,12 +164,24 @@ class ScraperPipeline:
             self._emit("step", step="validate", **progress)
             try:
                 validated_data = self._validator.run_all(
-                    raw_response, expect_list=expect_list
+                    raw_response, expect_list=expect_list, schema_description=schema_description
                 )
                 logger.info("[5/5] ✓ Data validated and extracted successfully.")
                 break
 
             except ValidationError as e:
+                if isinstance(e, SchemaMismatchError) and attempt + 1 == self.max_retries:
+                    # Out of retries but the data is usable: keep it and say what's off.
+                    validated_data = e.data
+                    shown = "; ".join(e.problems[:3])
+                    more = f" (and {len(e.problems) - 3} more)" if len(e.problems) > 3 else ""
+                    warnings.append(
+                        f"Some values still didn't match your fields after {self.max_retries} "
+                        f"attempts: {shown}{more}."
+                    )
+                    logger.warning(warnings[-1])
+                    self._emit("warning", message=warnings[-1])
+                    break
                 last_error = str(e)
                 logger.warning(
                     "Attempt %d failed: %s", attempt + 1, last_error
