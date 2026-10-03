@@ -1,37 +1,33 @@
 /** @type {import('tailwindcss').Config} */
+const token = (name) => `rgb(var(--${name}) / <alpha-value>)`;
+
 export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
+  darkMode: 'class',
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
-        workbench: {
-          bg: "#111215",
-          ribbon: "#0d0e11",
-          card: "#16181d",
-          elevated: "#1c1f26",
-          border: "#24262e",
-          borderFocus: "#3b404d",
-          text: "#ededed",
-          muted: "#8a8f98",
-          dim: "#525866",
-          amber: "#f59e0b",
-          amberGlow: "rgba(245, 158, 11, 0.15)",
-          green: "#10b981",
-          red: "#ef4444"
-        }
+        bg: token('bg'),
+        surface: token('surface'),
+        subtle: token('subtle'),
+        line: token('line'),
+        fg: token('fg'),
+        muted: token('muted'),
+        faint: token('faint'),
+        accent: token('accent'),
+        'accent-fg': token('accent-fg'),
+        ok: token('ok'),
+        warn: token('warn'),
+        bad: token('bad'),
       },
       fontFamily: {
-        mono: ['"JetBrains Mono"', '"IBM Plex Mono"', 'Menlo', 'Consolas', 'monospace'],
-        sans: ['GeistSans', 'Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'Menlo', 'Consolas', 'monospace'],
       },
-      borderRadius: {
-        sharp: "2px",
-        sm: "3px",
-        md: "4px"
-      }
+      boxShadow: {
+        card: '0 1px 2px rgb(0 0 0 / 0.04), 0 1px 3px rgb(0 0 0 / 0.06)',
+        pop: '0 20px 50px -12px rgb(0 0 0 / 0.35)',
+      },
     },
   },
   plugins: [],

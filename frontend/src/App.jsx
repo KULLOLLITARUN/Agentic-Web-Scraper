@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import StatusBar from './components/StatusBar';
 import PipelineStepper from './components/PipelineStepper';
 import ConfigPanel from './components/ConfigPanel';
@@ -10,7 +10,9 @@ const DEFAULT_URL = 'https://quotes.toscrape.com';
 const DEFAULT_SCHEMA = 'Each quote: text (string), author (string), tags (list of strings)';
 
 export default function App() {
-  const [theme, setTheme] = useState('dark');
+  const [theme, setTheme] = useState(() =>
+    document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+  );
   const [url, setUrl] = useState(DEFAULT_URL);
   const [schema, setSchema] = useState(DEFAULT_SCHEMA);
   const [retries, setRetries] = useState(3);
@@ -22,24 +24,16 @@ export default function App() {
   // Runtime states
   const [status, setStatus] = useState('idle'); // idle | running | done | error
   const [currentStep, setCurrentStep] = useState('idle'); // fetch | distill | infer | validate | done
+  const stepRef = useRef('idle');
   const [errorStep, setErrorStep] = useState(null);
   const [resultData, setResultData] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
 
   // Telemetry & metrics
-  const [metrics, setMetrics] = useState({
-    domReduction: 85.2,
-    elapsed: 0,
-    attempt: 1,
-    maxRetries: 3,
-    itemsCount: 0
-  });
+  const [metrics, setMetrics] = useState({ elapsed: 0, itemsCount: 0 });
 
   // Logs feed
-  const [logs, setLogs] = useState([
-    { time: '14:20:10', type: 'info', badge: 'INIT', message: 'Precision Instrument Workbench ready.' },
-    { time: '14:20:11', type: 'info', badge: 'ENGINE', message: 'Extraction engine connected on port 8000.' }
-  ]);
+  const [logs, setLogs] = useState([]);
 
   // History & settings
   const [history, setHistory] = useState([]);
@@ -54,9 +48,6 @@ export default function App() {
 
   useEffect(() => {
     try {
-      const savedTheme = localStorage.getItem('studio_theme') || 'dark';
-      setTheme(savedTheme);
-
       const savedHistory = localStorage.getItem('ai_scraper_history');
       if (savedHistory) setHistory(JSON.parse(savedHistory));
 
@@ -67,11 +58,20 @@ export default function App() {
     }
   }, []);
 
-  const handleToggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setTheme(next);
-    localStorage.setItem('studio_theme', next);
-  };
+  useEffect(() => {
+    stepRef.current = currentStep;
+  }, [currentStep]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    try {
+      localStorage.setItem('studio_theme', theme);
+    } catch {
+      // storage unavailable; theme still applies for this session
+    }
+  }, [theme]);
+
+  const handleToggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
 
   const addLog = (message, type = 'info', badge = 'STEP') => {
     const now = new Date();
@@ -89,20 +89,20 @@ export default function App() {
     setCurrentStep('fetch');
 
     const startTime = performance.now();
-    addLog(`Initiating extraction sequence for ${url}`, 'info', 'START');
+    addLog(`Starting scrape of ${url}`, 'info', 'START');
 
     const stepTimers = [
       setTimeout(() => {
         setCurrentStep('distill');
-        addLog('Playwright DOM rendered. Distilling markup & stripping script bloat (85% reduction)...', 'info', 'DISTILL');
+        addLog('Page loaded. Cleaning HTML…', 'info', 'CLEAN');
       }, 1200),
       setTimeout(() => {
         setCurrentStep('infer');
-        addLog('Transmitting distilled text to AI inference engine...', 'info', 'INFER');
+        addLog('Extracting fields from page text…', 'info', 'EXTRACT');
       }, 2600),
       setTimeout(() => {
         setCurrentStep('validate');
-        addLog('Inspecting model JSON structure against validation rules...', 'info', 'VALIDATE');
+        addLog('Validating output against your fields…', 'info', 'VALIDATE');
       }, 4200)
     ];
 
@@ -153,15 +153,9 @@ export default function App() {
       setCurrentStep('done');
       setStatus('done');
       setResultData(extractedData);
-      setMetrics({
-        domReduction: 88.4,
-        elapsed,
-        attempt: 1,
-        maxRetries: retries,
-        itemsCount
-      });
+      setMetrics({ elapsed, itemsCount });
 
-      addLog(`Extraction finished successfully. Compiled ${itemsCount} records in ${elapsed}s`, 'info', 'SUCCESS');
+      addLog(`Done: ${itemsCount} records in ${elapsed}s`, 'info', 'DONE');
 
       // Save to history
       const newRun = {
@@ -180,15 +174,12 @@ export default function App() {
     } catch (err) {
       stepTimers.forEach(clearTimeout);
       setStatus('error');
-      setErrorStep(currentStep || 'fetch');
+      setErrorStep(stepRef.current === 'idle' || stepRef.current === 'done' ? 'fetch' : stepRef.current);
       setErrorMessage(err.message || 'Scrape execution failed.');
 
-      setMetrics((prev) => ({
-        ...prev,
-        elapsed: ((performance.now() - startTime) / 1000).toFixed(2)
-      }));
+      setMetrics({ itemsCount: 0, elapsed: ((performance.now() - startTime) / 1000).toFixed(2) });
 
-      addLog(`Error encountered: ${err.message}`, 'error', 'FAIL');
+      addLog(err.message || 'Scrape failed', 'error', 'ERROR');
     }
   };
 
@@ -198,30 +189,26 @@ export default function App() {
     setResultData(run.data);
     setStatus('done');
     setCurrentStep('done');
-    setMetrics({
-      domReduction: 85.2,
-      elapsed: run.elapsed,
-      attempt: 1,
-      maxRetries: retries,
-      itemsCount: run.itemsCount
-    });
-    addLog(`Loaded historical execution record for ${run.url}`, 'info', 'HISTORY');
+    setErrorStep(null);
+    setErrorMessage(null);
+    setMetrics({ elapsed: run.elapsed, itemsCount: run.itemsCount });
+    addLog(`Loaded saved run for ${run.url}`, 'info', 'HISTORY');
   };
 
   const handleClearHistory = () => {
     setHistory([]);
     localStorage.removeItem('ai_scraper_history');
-    addLog('Audit run history cleared from local storage.', 'info', 'CLEARED');
+    addLog('Run history cleared.', 'info', 'HISTORY');
   };
 
   const handleSaveConfig = (newConfig) => {
     setConfig(newConfig);
     localStorage.setItem('ai_scraper_config', JSON.stringify(newConfig));
-    addLog('Workbench configuration updated.', 'info', 'CONFIG');
+    addLog('Settings saved.', 'info', 'SETTINGS');
   };
 
   return (
-    <div className={`min-h-screen w-full flex flex-col ${theme === 'dark' ? 'bg-[#050608] text-[#ededed]' : 'bg-[#f4f5f7] text-[#09090b]'} overflow-x-hidden selection:bg-[#ff9e00] selection:text-black transition-colors`}>
+        <div className="h-screen w-full flex flex-col overflow-hidden">
       <StatusBar
         status={status}
         metrics={metrics}
@@ -232,10 +219,8 @@ export default function App() {
         onToggleTheme={handleToggleTheme}
       />
 
-      {/* Main Responsive Split Layout: lg:flex-row (desktop side-by-side), flex-col (mobile/tablet stacked) */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-        {/* Left Control Deck (42% on desktop, full-width on mobile) */}
-        <div className="w-full lg:w-[42%] lg:min-w-[360px] lg:max-w-[560px] flex flex-col shrink-0">
+      <main className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
+        <div className="w-full lg:w-[40%] lg:min-w-[380px] lg:max-w-[520px] shrink-0 lg:border-r border-line">
           <ConfigPanel
             url={url}
             setUrl={setUrl}
@@ -258,25 +243,21 @@ export default function App() {
           />
         </div>
 
-        {/* Right Output Inspector & Pipeline (58% on desktop, full-width on mobile) */}
-        <div className="flex-1 flex flex-col overflow-hidden min-h-[450px]">
+        <div className="flex-1 flex flex-col min-w-0 min-h-[520px] lg:min-h-0 border-t lg:border-t-0 border-line bg-dots">
           <PipelineStepper
             currentStep={currentStep}
             errorStep={errorStep}
           />
 
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 min-h-0">
             <InspectorPanel
               data={resultData}
-              url={url}
-              schema={schema}
-              metrics={metrics}
               isLoading={status === 'running'}
               error={errorMessage}
             />
           </div>
         </div>
-      </div>
+      </main>
 
       <HistoryModal
         isOpen={isHistoryOpen}

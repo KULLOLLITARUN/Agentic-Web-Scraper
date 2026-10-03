@@ -1,290 +1,284 @@
-import React, { useState } from 'react';
-import { Copy, Download, Terminal, Search, Table as TableIcon, Code2, Check, RefreshCw } from 'lucide-react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Copy, Download, Search, Table2, Braces, Check, AlertCircle, MousePointerClick } from 'lucide-react';
+import { fadeUp, motion } from '../lib/motion';
 
-export default function InspectorPanel({
-  data,
-  url,
-  schema,
-  metrics,
-  isLoading,
-  error
-}) {
+const TABS = [
+  { id: 'table', label: 'Table', Icon: Table2 },
+  { id: 'json', label: 'JSON', Icon: Braces },
+];
+
+function Cell({ value }) {
+  if (Array.isArray(value)) {
+    return (
+      <div className="flex flex-wrap gap-1">
+        {value.map((v, i) => (
+          <span key={i} className="px-2 py-0.5 rounded-md bg-accent/10 text-accent text-[11px] font-medium">
+            {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+          </span>
+        ))}
+      </div>
+    );
+  }
+  if (typeof value === 'boolean') {
+    return (
+      <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium ${value ? 'bg-ok/10 text-ok' : 'bg-bad/10 text-bad'}`}>
+        {value ? 'Yes' : 'No'}
+      </span>
+    );
+  }
+  if (value === null || value === undefined || value === '') {
+    return <span className="text-faint">—</span>;
+  }
+  if (typeof value === 'object') {
+    return <span className="font-mono text-xs text-muted">{JSON.stringify(value)}</span>;
+  }
+  if (typeof value === 'string' && /^https?:\/\//.test(value)) {
+    return (
+      <a href={value} target="_blank" rel="noreferrer" className="text-accent hover:underline break-all line-clamp-2">
+        {value}
+      </a>
+    );
+  }
+  return <span className={`line-clamp-3 ${typeof value === 'number' ? 'tabular-nums' : ''}`}>{String(value)}</span>;
+}
+
+function Skeleton() {
+  const ref = useRef(null);
+  useEffect(() => {
+    const anim = motion(ref.current?.children, {
+      opacity: [0.35, 1],
+      duration: 800,
+      delay: (_, i) => i * 120,
+      alternate: true,
+      loop: true,
+      ease: 'inOutSine',
+    });
+    return () => anim?.pause();
+  }, []);
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="text-sm text-muted">Scraping the page and extracting your fields…</div>
+      <div ref={ref} className="card overflow-hidden divide-y divide-line">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="px-4 py-3.5 flex gap-4">
+            <div className="h-3 w-6 rounded bg-subtle" />
+            <div className="h-3 rounded bg-subtle" style={{ width: `${35 + ((i * 17) % 30)}%` }} />
+            <div className="h-3 w-24 rounded bg-subtle ml-auto" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function InspectorPanel({ data, isLoading, error }) {
   const [activeTab, setActiveTab] = useState('table');
   const [filterText, setFilterText] = useState('');
   const [copied, setCopied] = useState(false);
-  const [curlCopied, setCurlCopied] = useState(false);
+  const tabRefs = useRef({});
+  const pillRef = useRef(null);
+  const bodyRef = useRef(null);
+
+  // Slide the tab indicator under the active tab.
+  useLayoutEffect(() => {
+    const el = tabRefs.current[activeTab];
+    if (!el || !pillRef.current) return;
+    motion(pillRef.current, { translateX: el.offsetLeft, width: el.offsetWidth, duration: 380, ease: 'outQuart' });
+  }, [activeTab]);
+
+  // Stagger rows / content in whenever new results arrive or the view changes.
+  useEffect(() => {
+    if (!data || isLoading || error) return;
+    const rows = bodyRef.current?.querySelectorAll('[data-row]');
+    if (rows?.length) fadeUp(Array.from(rows).slice(0, 40), { step: 25, distance: 6 });
+    else fadeUp(bodyRef.current?.firstElementChild);
+  }, [data, activeTab, isLoading, error]);
+
+  useEffect(() => {
+    if (error) motion(bodyRef.current?.firstElementChild, { translateX: [0, -8, 8, -5, 5, 0], duration: 450, ease: 'inOutSine' });
+  }, [error]);
 
   const handleCopyJson = () => {
     if (!data) return;
     navigator.clipboard.writeText(JSON.stringify(data, null, 2));
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleCopyCurl = () => {
-    const curlCmd = `curl -X POST http://localhost:8000/scrape \\
-  -H "Content-Type: application/json" \\
-  -d '{\\
-    "url": "${url || 'https://quotes.toscrape.com'}",\\
-    "instruction": "${(schema || '').replace(/"/g, '\\"')}",\\
-    "max_retries": 3\\
-  }'`;
-    navigator.clipboard.writeText(curlCmd);
-    setCurlCopied(true);
-    setTimeout(() => setCurlCopied(false), 2000);
+    setTimeout(() => setCopied(false), 1800);
   };
 
   const handleExportCsv = () => {
     if (!data) return;
-    const items = Array.isArray(data) ? data : [data];
-    if (items.length === 0) return;
-
-    const headers = Object.keys(items[0]);
-    const csvRows = [
-      headers.join(','),
-      ...items.map(row => 
-        headers.map(h => {
-          const val = row[h];
-          const escaped = (typeof val === 'object' ? JSON.stringify(val) : String(val ?? '')).replace(/"/g, '""');
-          return `"${escaped}"`;
-        }).join(',')
-      )
-    ];
-
-    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
-    const blobUrl = URL.createObjectURL(blob);
+    const rows = Array.isArray(data) ? data : [data];
+    if (rows.length === 0) return;
+    const cols = Object.keys(rows[0]);
+    const csv = [
+      cols.join(','),
+      ...rows.map((row) =>
+        cols
+          .map((h) => {
+            const val = row[h];
+            return `"${(typeof val === 'object' ? JSON.stringify(val) : String(val ?? '')).replace(/"/g, '""')}"`;
+          })
+          .join(','),
+      ),
+    ].join('\n');
+    const blobUrl = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a');
     a.href = blobUrl;
-    a.download = `scraped_dataset_${Date.now()}.csv`;
+    a.download = `scraped_${Date.now()}.csv`;
     a.click();
     URL.revokeObjectURL(blobUrl);
   };
 
-  const filteredData = React.useMemo(() => {
-    if (!data) return null;
-    if (!filterText.trim()) return data;
-    if (!Array.isArray(data)) return data;
-
-    const query = filterText.toLowerCase();
-    return data.filter(item => {
-      if (typeof item !== 'object' || !item) return false;
-      return Object.values(item).some(val => 
-        String(val).toLowerCase().includes(query)
-      );
-    });
+  const filtered = useMemo(() => {
+    if (!data || !Array.isArray(data) || !filterText.trim()) return data;
+    const q = filterText.toLowerCase();
+    return data.filter((item) => item && typeof item === 'object' && Object.values(item).some((v) => String(v).toLowerCase().includes(q)));
   }, [data, filterText]);
 
-  const items = Array.isArray(filteredData) ? filteredData : (filteredData ? [filteredData] : []);
-  const headers = items.length > 0 ? Object.keys(items[0]) : [];
+  const items = Array.isArray(filtered) ? filtered : filtered ? [filtered] : [];
+  const headers = items.length > 0 && typeof items[0] === 'object' ? Object.keys(items[0]) : [];
+  const total = Array.isArray(data) ? data.length : data ? 1 : 0;
 
-  return (
-    <div className="h-full flex flex-col bg-[#07080b] select-none text-[#ededed]">
-      {/* TOOLBAR */}
-      <div className="h-10 px-3 sm:px-4 bg-[#0c0e14] border-b-2 border-[#1c1e26] flex items-center justify-between text-xs font-mono">
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* TAB BUTTONS */}
-          <button
-            onClick={() => setActiveTab('table')}
-            className={`px-2.5 py-1 text-[10px] font-black uppercase transition-all flex items-center gap-1.5 border ${
-              activeTab === 'table'
-                ? 'bg-[#1c1e28] text-white border-[#ff9e00]'
-                : 'text-[#626a80] border-transparent hover:text-white'
-            }`}
-          >
-            <TableIcon size={12} className={activeTab === 'table' ? 'text-[#ff9e00]' : ''} />
-            <span>TABLE VIEW</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('json')}
-            className={`px-2.5 py-1 text-[10px] font-black uppercase transition-all flex items-center gap-1.5 border ${
-              activeTab === 'json'
-                ? 'bg-[#1c1e28] text-white border-[#00ff88]'
-                : 'text-[#626a80] border-transparent hover:text-white'
-            }`}
-          >
-            <Code2 size={12} className={activeTab === 'json' ? 'text-[#00ff88]' : ''} />
-            <span>RAW JSON</span>
-          </button>
+  let body;
+  if (isLoading) {
+    body = <Skeleton />;
+  } else if (error) {
+    body = (
+      <div className="h-full min-h-[280px] grid place-items-center">
+        <div className="max-w-md w-full card p-5 border-bad/30">
+          <div className="flex items-center gap-2 text-bad font-medium text-sm">
+            <AlertCircle size={17} /> Scrape failed
+          </div>
+          <p className="mt-2 text-sm text-muted break-words">{error}</p>
+        </div>
+      </div>
+    );
+  } else if (!data) {
+    body = (
+      <div className="h-full min-h-[300px] grid place-items-center text-center">
+        <div className="flex flex-col items-center gap-3 max-w-xs">
+          <div className="w-12 h-12 rounded-2xl bg-accent/10 text-accent grid place-items-center">
+            <MousePointerClick size={22} />
+          </div>
+          <div className="text-sm font-medium">No results yet</div>
+          <p className="text-sm text-muted">
+            Enter a URL, describe the fields you want, then press <span className="font-medium text-fg">Run scraper</span>.
+          </p>
+        </div>
+      </div>
+    );
+  } else if (activeTab === 'json') {
+    body = (
+      <pre className="card p-4 overflow-auto font-mono text-[12px] leading-relaxed text-fg select-text">
+        {JSON.stringify(data, null, 2)}
+      </pre>
+    );
+  } else if (items.length === 0) {
+    body = <div className="text-sm text-muted text-center py-16">No records match “{filterText}”.</div>;
+  } else {
+    body = (
+      <>
+        <div className="hidden sm:block card overflow-auto">
+          <table className="w-full text-left text-sm border-collapse">
+            <thead className="sticky top-0 z-10 bg-subtle text-xs text-muted">
+              <tr>
+                <th className="py-2.5 px-4 w-12 font-medium">#</th>
+                {headers.map((h) => (
+                  <th key={h} className="py-2.5 px-4 font-medium whitespace-nowrap capitalize">
+                    {h.replace(/_/g, ' ')}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {items.map((row, idx) => (
+                <tr key={idx} data-row className="hover:bg-subtle/60 transition-colors align-top">
+                  <td className="py-3 px-4 text-faint text-xs tabular-nums">{idx + 1}</td>
+                  {headers.map((h) => (
+                    <td key={h} className="py-3 px-4 max-w-[420px] select-text">
+                      <Cell value={row[h]} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
 
-        {/* SEARCH & ACTIONS */}
+        <div className="sm:hidden space-y-3">
+          {items.map((row, idx) => (
+            <div key={idx} data-row className="card p-4 space-y-2.5">
+              <div className="text-xs text-faint">Record {idx + 1}</div>
+              {headers.map((h) => (
+                <div key={h} className="flex flex-col gap-1">
+                  <span className="text-[11px] text-muted capitalize">{h.replace(/_/g, ' ')}</span>
+                  <div className="text-sm select-text">
+                    <Cell value={row[h]} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 border-y border-line bg-surface/50">
+        <div className="relative inline-flex rounded-lg bg-subtle p-0.5 border border-line">
+          <span ref={pillRef} className="absolute top-0.5 bottom-0.5 left-0 rounded-md bg-surface shadow-card" style={{ width: 0 }} />
+          {TABS.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              ref={(el) => (tabRefs.current[id] = el)}
+              onClick={() => setActiveTab(id)}
+              className={`relative z-10 h-7 px-3 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                activeTab === id ? 'text-fg' : 'text-muted hover:text-fg'
+              }`}
+            >
+              <Icon size={14} /> {label}
+            </button>
+          ))}
+        </div>
+
+        {data && !isLoading && (
+          <span className="text-xs text-muted mr-auto">
+            {filterText && Array.isArray(data) ? `${items.length} of ${total}` : total} {total === 1 ? 'record' : 'records'}
+          </span>
+        )}
+
         <div className="flex items-center gap-2">
-          {items.length > 0 && activeTab === 'table' && (
-            <div className="relative hidden sm:block">
-              <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-[#555c70]" />
+          {Array.isArray(data) && activeTab === 'table' && !isLoading && (
+            <div className="relative">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
               <input
                 type="text"
                 value={filterText}
                 onChange={(e) => setFilterText(e.target.value)}
-                placeholder="Filter results..."
-                className="w-36 bg-[#050608] border border-[#1c1e26] pl-6 pr-2 py-0.5 text-[10px] text-white placeholder-[#383d4d] outline-none font-mono focus:border-[#ff9e00]"
+                placeholder="Filter…"
+                className="field h-8 py-0 pl-8 w-32 sm:w-44 text-xs"
               />
             </div>
           )}
-
-          <button
-            onClick={handleCopyJson}
-            disabled={!data}
-            className="px-2 py-1 bg-[#141620] hover:bg-[#1a1e2b] border border-[#222634] text-white font-mono text-[9px] font-bold flex items-center gap-1 transition-all active:translate-y-[1px] disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Copy Raw JSON"
-          >
-            {copied ? <Check size={10} className="text-[#00ff88]" /> : <Copy size={10} />}
-            <span className="hidden sm:inline">{copied ? 'COPIED' : 'JSON'}</span>
+          <button onClick={handleCopyJson} disabled={!data} className="btn-outline" title="Copy JSON">
+            {copied ? <Check size={14} className="text-ok" /> : <Copy size={14} />}
+            <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy'}</span>
           </button>
-
           <button
             onClick={handleExportCsv}
             disabled={!data}
-            className="px-2.5 py-1 bg-[#00ff88] hover:bg-[#1aff96] text-black font-mono text-[9px] font-black uppercase flex items-center gap-1 shadow-[0_2px_0_#009952] active:translate-y-[1px] active:shadow-none transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Download CSV Dataset"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm font-medium bg-fg text-bg hover:opacity-90 transition disabled:opacity-30 disabled:pointer-events-none"
+            title="Download CSV"
           >
-            <Download size={11} strokeWidth={2.5} />
-            <span>EXPORT CSV</span>
+            <Download size={14} /> CSV
           </button>
         </div>
       </div>
 
-      {/* BODY VIEWPORT */}
-      <div className="flex-1 overflow-auto bg-[#050608] p-3 sm:p-4">
-        {isLoading ? (
-          <div className="h-full min-h-[300px] flex flex-col items-center justify-center gap-3 text-center">
-            <div className="relative w-12 h-12 flex items-center justify-center">
-              <div className="absolute inset-0 border-2 border-[#ff9e00]/20 animate-ping" />
-              <div className="w-10 h-10 border-2 border-[#ff9e00] border-t-transparent animate-spin" />
-            </div>
-            <div className="font-mono text-xs font-bold text-white tracking-widest uppercase">
-              DISTILLING & EXTRACTING STRUCTURED PAYLOAD...
-            </div>
-            <div className="font-mono text-[10px] text-[#555c70]">
-              Playwright headless Chromium execution in motion
-            </div>
-          </div>
-        ) : error ? (
-          <div className="h-full min-h-[250px] flex flex-col items-center justify-center gap-2 p-6 text-center">
-            <div className="text-[#ff3355] font-mono text-xs font-black uppercase tracking-wider">
-              [EXTRACTION FAILURE DETECTED]
-            </div>
-            <div className="font-mono text-xs text-[#a0a8ba] max-w-md bg-[#12080a] p-3 border border-[#ff3355]/30">
-              {error}
-            </div>
-          </div>
-        ) : !data ? (
-          <div className="h-full min-h-[300px] flex flex-col items-center justify-center gap-2 text-center text-[#555c70] font-mono select-none">
-            <Terminal size={28} className="opacity-30 mb-1" />
-            <div className="text-xs font-bold uppercase tracking-wider text-[#788094]">
-              AWAITING EXTRACTION DISPATCH
-            </div>
-            <div className="text-[10px] max-w-sm text-[#454b5c]">
-              Select a target URL or preset from the left control panel and press RUN to extract structured data.
-            </div>
-          </div>
-        ) : activeTab === 'table' ? (
-          /* BENTO DATA TABLE WITH HORIZONTAL SCROLL & CARD RESPONSIVENESS */
-          <div className="space-y-3">
-            {/* Desktop Table View */}
-            <div className="hidden sm:block overflow-x-auto border-2 border-[#1c1e26] bg-[#08090d]">
-              <table className="w-full text-left font-mono text-xs border-collapse">
-                <thead className="bg-[#0e1017] border-b-2 border-[#1c1e26] text-[#788094] uppercase text-[10px] tracking-wider font-black sticky top-0 z-10">
-                  <tr>
-                    <th className="py-2.5 px-3 w-10 text-center border-r border-[#1c1e26]">#</th>
-                    {headers.map(h => (
-                      <th key={h} className="py-2.5 px-3 border-r border-[#1c1e26] whitespace-nowrap text-white">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#161822]">
-                  {items.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-[#10121a] transition-colors">
-                      <td className="py-2.5 px-3 text-[#555c70] text-center font-bold text-[10px] border-r border-[#1c1e26]">
-                        {idx + 1}
-                      </td>
-                      {headers.map(h => {
-                        const val = row[h];
-                        return (
-                          <td key={h} className="py-2.5 px-3 text-[#ededed] border-r border-[#1c1e26] align-top">
-                            {Array.isArray(val) ? (
-                              <div className="flex flex-wrap gap-1">
-                                {val.map((tag, tIdx) => (
-                                  <span
-                                    key={tIdx}
-                                    className="px-1.5 py-0.2 bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/30 text-[9px] font-mono font-bold"
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : typeof val === 'boolean' ? (
-                              <span className={`px-1.5 py-0.5 text-[9px] font-black border ${
-                                val 
-                                  ? 'bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]' 
-                                  : 'bg-[#ff3355]/20 text-[#ff3355] border-[#ff3355]'
-                              }`}>
-                                {val ? 'TRUE' : 'FALSE'}
-                              </span>
-                            ) : (
-                              <span className="line-clamp-3 select-text leading-relaxed">
-                                {String(val ?? '')}
-                              </span>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile Card View (< 640px) */}
-            <div className="sm:hidden space-y-2.5">
-              {items.map((row, idx) => (
-                <div key={idx} className="bg-[#0b0d13] border-2 border-[#1c1e26] p-3 space-y-2">
-                  <div className="flex items-center justify-between border-b border-[#1c1e26] pb-1.5">
-                    <span className="text-[10px] font-mono font-black text-[#ff9e00]">
-                      RECORD #{idx + 1}
-                    </span>
-                  </div>
-                  {headers.map(h => {
-                    const val = row[h];
-                    return (
-                      <div key={h} className="flex flex-col gap-0.5">
-                        <span className="text-[9px] font-mono font-bold text-[#555c70] uppercase">
-                          {h}:
-                        </span>
-                        {Array.isArray(val) ? (
-                          <div className="flex flex-wrap gap-1 mt-0.5">
-                            {val.map((tag, tIdx) => (
-                              <span
-                                key={tIdx}
-                                className="px-1.5 py-0.2 bg-[#00ff88]/10 text-[#00ff88] border border-[#00ff88]/30 text-[9px] font-mono font-bold"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-xs font-mono text-white select-text">
-                            {String(val ?? '')}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          /* RAW JSON VIEW */
-          <div className="border-2 border-[#1c1e26] bg-[#040507] p-3 overflow-auto">
-            <pre className="font-mono text-xs text-[#00ff88] leading-relaxed select-text">
-              {JSON.stringify(data, null, 2)}
-            </pre>
-          </div>
-        )}
+      <div ref={bodyRef} className="flex-1 overflow-auto p-4 sm:p-6">
+        {body}
       </div>
     </div>
   );

@@ -1,78 +1,83 @@
-import React from 'react';
-import { Globe, Scissors, Cpu, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import { Globe, Scissors, Sparkles, ShieldCheck, Check, X } from 'lucide-react';
+import { utils } from 'animejs';
+import { motion } from '../lib/motion';
 
 const STEPS = [
-  { id: 'fetch', num: '01', label: 'FETCH_DOM', desc: 'Chromium Core' },
-  { id: 'distill', num: '02', label: 'DISTILL', desc: 'DOM Pruning' },
-  { id: 'infer', num: '03', label: 'INFERENCE', desc: 'Neural Pipeline' },
-  { id: 'validate', num: '04', label: 'VALIDATE', desc: 'Schema Typing' }
+  { id: 'fetch', label: 'Fetch page', desc: 'Load in Chromium', Icon: Globe },
+  { id: 'distill', label: 'Clean HTML', desc: 'Strip noise', Icon: Scissors },
+  { id: 'infer', label: 'Extract', desc: 'Map to your fields', Icon: Sparkles },
+  { id: 'validate', label: 'Validate', desc: 'Check the schema', Icon: ShieldCheck },
 ];
+const ORDER = STEPS.map((s) => s.id);
+
+function stepStatus(stepId, index, currentStep, errorStep) {
+  if (errorStep === stepId) return 'error';
+  if (errorStep && index > ORDER.indexOf(errorStep)) return 'pending';
+  if (currentStep === 'done') return 'done';
+  if (currentStep === 'idle') return 'pending';
+  const current = ORDER.indexOf(currentStep);
+  if (index < current) return 'done';
+  if (index === current) return 'active';
+  return 'pending';
+}
 
 export default function PipelineStepper({ currentStep, errorStep }) {
-  const getStepStatus = (stepId, index) => {
-    const stepOrder = ['fetch', 'distill', 'infer', 'validate'];
-    const currentIndex = stepOrder.indexOf(currentStep);
-    const thisIndex = index;
+  const barRef = useRef(null);
+  const nodeRefs = useRef([]);
 
-    if (errorStep === stepId) return 'error';
-    if (currentStep === 'done') return 'done';
-    if (currentStep === 'idle') return 'pending';
-    if (thisIndex < currentIndex) return 'done';
-    if (thisIndex === currentIndex) return 'active';
-    return 'pending';
-  };
+  const reached = errorStep
+    ? ORDER.indexOf(errorStep)
+    : currentStep === 'done'
+      ? ORDER.length - 1
+      : Math.max(0, ORDER.indexOf(currentStep));
+  const progress = currentStep === 'idle' && !errorStep ? 0 : reached / (ORDER.length - 1);
+
+  useEffect(() => {
+    utils.set(barRef.current, { scaleX: 0 });
+  }, []);
+
+  useEffect(() => {
+    motion(barRef.current, { scaleX: progress, duration: 700, ease: 'outExpo' });
+  }, [progress]);
+
+  useEffect(() => {
+    const idx = errorStep ? ORDER.indexOf(errorStep) : ORDER.indexOf(currentStep);
+    const node = nodeRefs.current[idx];
+    if (node) motion(node, { scale: [0.7, 1], duration: 600, ease: 'outElastic(1, .6)' });
+  }, [currentStep, errorStep]);
 
   return (
-    <div className="w-full bg-[#07080b] border-b-2 border-[#1c1e26] p-2 sm:p-3 select-none">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {STEPS.map((step, index) => {
-          const status = getStepStatus(step.id, index);
+    <div className="px-4 sm:px-6 pt-5 pb-4">
+      <div className="relative grid grid-cols-4">
+        {/* track */}
+        <div className="absolute top-[18px] left-[12.5%] right-[12.5%] h-0.5 rounded-full bg-line" />
+        <div
+          ref={barRef}
+          className={`absolute top-[18px] left-[12.5%] right-[12.5%] h-0.5 rounded-full origin-left ${errorStep ? 'bg-bad' : 'bg-accent'}`}
+        />
 
-          let borderColor = 'border-[#1c1e26]';
-          let bgColor = 'bg-[#0b0d13]';
-          let textColor = 'text-[#505769]';
-          let numBadge = 'bg-[#141620] text-[#555c70] border-[#1c1e26]';
-          let pulseDot = 'bg-[#383d4d]';
-
-          if (status === 'active') {
-            borderColor = 'border-[#ff9e00] shadow-[0_0_12px_rgba(255,158,0,0.15)]';
-            bgColor = 'bg-[#12110c]';
-            textColor = 'text-white';
-            numBadge = 'bg-[#ff9e00] text-black border-[#ffa81a] font-black';
-            pulseDot = 'bg-[#ff9e00] animate-pulse';
-          } else if (status === 'done') {
-            borderColor = 'border-[#00ff88]/50';
-            bgColor = 'bg-[#09120e]';
-            textColor = 'text-white';
-            numBadge = 'bg-[#00ff88] text-black border-[#00ff88] font-black';
-            pulseDot = 'bg-[#00ff88]';
-          } else if (status === 'error') {
-            borderColor = 'border-[#ff3355] shadow-[0_0_12px_rgba(255,51,85,0.2)]';
-            bgColor = 'bg-[#170a0d]';
-            textColor = 'text-white';
-            numBadge = 'bg-[#ff3355] text-white border-[#ff3355]';
-            pulseDot = 'bg-[#ff3355]';
-          }
+        {STEPS.map(({ id, label, desc, Icon }, i) => {
+          const st = stepStatus(id, i, currentStep, errorStep);
+          const node = {
+            pending: 'bg-surface border-line text-faint',
+            active: 'bg-accent border-accent text-accent-fg ring-4 ring-accent/20',
+            done: 'bg-accent/10 border-accent/40 text-accent',
+            error: 'bg-bad border-bad text-white ring-4 ring-bad/20',
+          }[st];
 
           return (
-            <div
-              key={step.id}
-              className={`p-2 sm:p-2.5 border-2 ${borderColor} ${bgColor} flex flex-col justify-between transition-all duration-200 relative overflow-hidden`}
-            >
-              <div className="flex items-center justify-between mb-1 sm:mb-1.5">
-                <span className={`px-1 sm:px-1.5 py-0.2 sm:py-0.5 border text-[9px] font-mono font-bold ${numBadge}`}>
-                  {step.num}
-                </span>
-                <span className={`w-1.5 h-1.5 ${pulseDot}`} />
+            <div key={id} className="relative flex flex-col items-center text-center gap-2 min-w-0">
+              <div
+                ref={(el) => (nodeRefs.current[i] = el)}
+                className={`relative z-10 w-9 h-9 rounded-full border-2 grid place-items-center transition-colors duration-300 ${node}`}
+              >
+                {st === 'done' ? <Check size={16} strokeWidth={2.5} /> : st === 'error' ? <X size={16} strokeWidth={2.5} /> : <Icon size={16} />}
+                {st === 'active' && <span className="absolute inset-0 rounded-full border-2 border-accent animate-ping opacity-40" />}
               </div>
-
-              <div>
-                <div className={`font-mono text-[10px] sm:text-[11px] font-black tracking-wider uppercase ${textColor}`}>
-                  {step.label}
-                </div>
-                <div className="text-[9px] font-mono text-[#626a80] truncate mt-0.5">
-                  {step.desc}
-                </div>
+              <div className="min-w-0 px-1">
+                <div className={`text-xs sm:text-sm font-medium truncate ${st === 'pending' ? 'text-muted' : 'text-fg'}`}>{label}</div>
+                <div className="text-[11px] text-faint truncate hidden sm:block">{desc}</div>
               </div>
             </div>
           );
