@@ -10,6 +10,7 @@ class FakePipeline:
     """Stands in for ScraperPipeline so no browser or LLM is needed."""
 
     last_kwargs = {}
+    last_run_kwargs = {}
     result = {"url": "https://example.com", "items_count": 1, "data": [{"x": 1}], "warnings": []}
     error = None
 
@@ -18,6 +19,7 @@ class FakePipeline:
         self.step = "idle"
 
     async def run(self, *args, on_event=None, **kwargs):
+        FakePipeline.last_run_kwargs = kwargs
         emit = on_event or (lambda event: None)
         for step in ("fetch", "distill"):
             self.step = step
@@ -114,3 +116,24 @@ def test_stream_reports_failed_step(client):
         "message": "model said no",
         "elapsed_seconds": events[-1]["elapsed_seconds"],
     }
+
+
+def test_max_pages_is_passed_to_pipeline_and_pages_scraped_returned(client):
+    FakePipeline.result = {**FakePipeline.result, "pages_scraped": 4}
+    r = client.post("/scrape", json={"url": "https://example.com", "max_pages": 5})
+
+    assert FakePipeline.last_run_kwargs["max_pages"] == 5
+    assert r.json()["pages_scraped"] == 4
+
+
+def test_max_pages_defaults_to_one(client):
+    client.post("/scrape", json={"url": "https://example.com"})
+
+    assert FakePipeline.last_run_kwargs["max_pages"] == 1
+
+
+@pytest.mark.parametrize("max_pages", [0, 51])
+def test_out_of_range_max_pages_rejected(client, max_pages):
+    r = client.post("/scrape", json={"url": "https://example.com", "max_pages": max_pages})
+
+    assert r.status_code == 422

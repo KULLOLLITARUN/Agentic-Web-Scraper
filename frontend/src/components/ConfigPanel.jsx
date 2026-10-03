@@ -84,6 +84,8 @@ export default function ConfigPanel({
   setScroll,
   maxScrolls = 5,
   setMaxScrolls,
+  maxPages = 1,
+  setMaxPages,
   headless = true,
   setHeadless,
   onRun,
@@ -216,6 +218,20 @@ export default function ConfigPanel({
               { value: true, label: 'List' },
               { value: false, label: 'Single' },
             ]}
+          />
+        </div>
+
+        <div className={`px-4 py-3 flex items-center justify-between gap-3 transition-opacity ${expectList ? '' : 'opacity-40 pointer-events-none'}`}>
+          <div>
+            <div className="text-sm">Pages</div>
+            <div className="text-[11px] text-faint">
+              {expectList ? 'Follow "next" links, up to' : 'List results only'}
+            </div>
+          </div>
+          <Segmented
+            value={expectList ? maxPages : 1}
+            onChange={setMaxPages}
+            options={[1, 3, 5, 10].map((n) => ({ value: n, label: String(n) }))}
           />
         </div>
 

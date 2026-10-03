@@ -22,6 +22,8 @@ export default function App() {
   const [expectList, setExpectList] = useState(true);
   const [scroll, setScroll] = useState(true);
   const [maxScrolls, setMaxScrolls] = useState(5);
+  const [maxPages, setMaxPages] = useState(1);
+  const [pageInfo, setPageInfo] = useState(null); // { page, max } while scraping several pages
   const [headless, setHeadless] = useState(true);
 
   // Runtime states
@@ -99,6 +101,7 @@ export default function App() {
     setWarnings([]);
     setErrorStep(null);
     setAttempt(null);
+    setPageInfo(null);
     setCurrentStep('fetch');
     stepRef.current = 'fetch';
 
@@ -119,6 +122,7 @@ export default function App() {
           expect_list: expectList,
           scroll: scroll,
           max_scrolls: maxScrolls,
+          max_pages: expectList ? maxPages : 1,
           headless: headless,
           model: config.model || null,
           api_key: config.apiKey || null,
@@ -148,6 +152,8 @@ export default function App() {
           handleStepEvent(event);
         } else if (event.type === 'retry') {
           addLog(`Attempt ${event.attempt} of ${event.max_attempts} failed validation: ${event.error}`, 'retry', 'RETRY');
+        } else if (event.type === 'page_done' && expectList && maxPages > 1) {
+          addLog(`Page ${event.page}: ${event.items} records (${event.total_items} so far)`, 'info', 'PAGE');
         } else if (event.type === 'warning') {
           addLog(event.message, 'warn', 'WARNING');
         } else if (event.type === 'result' || event.type === 'error') {
@@ -166,6 +172,7 @@ export default function App() {
       const elapsed = String(final.elapsed_seconds);
       const itemsCount = final.items_count;
       const runWarnings = final.warnings || [];
+      const pagesScraped = final.pages_scraped || 1;
 
       setCurrentStep('done');
       setStatus('done');
@@ -173,7 +180,8 @@ export default function App() {
       setWarnings(runWarnings);
       setMetrics({ elapsed, itemsCount });
 
-      addLog(`Done: ${itemsCount} records in ${elapsed}s`, 'info', 'DONE');
+      const fromPages = pagesScraped > 1 ? ` from ${pagesScraped} pages` : '';
+      addLog(`Done: ${itemsCount} records${fromPages} in ${elapsed}s`, 'info', 'DONE');
 
       // Save to history
       const newRun = {
@@ -182,6 +190,7 @@ export default function App() {
         url,
         schema,
         itemsCount,
+        pagesScraped,
         elapsed,
         data: extractedData,
         warnings: runWarnings
@@ -217,7 +226,11 @@ export default function App() {
     if (event.step !== 'done') setCurrentStep(event.step);
     if (event.attempt) setAttempt({ current: event.attempt, max: event.max_attempts });
 
-    if (event.step === 'distill') {
+    if (event.step === 'fetch' && event.max_pages > 1) {
+      setPageInfo({ page: event.page, max: event.max_pages });
+      setAttempt(null);
+      if (event.page > 1) addLog(`Loading page ${event.page} of up to ${event.max_pages}: ${event.url}`, 'info', 'NEXT');
+    } else if (event.step === 'distill') {
       addLog(`Page loaded (${event.html_chars.toLocaleString()} chars of HTML). Cleaning…`, 'info', 'CLEAN');
     } else if (event.step === 'infer') {
       const suffix = event.attempt > 1 ? ` (attempt ${event.attempt} of ${event.max_attempts})` : '';
@@ -279,6 +292,8 @@ export default function App() {
             scroll={scroll}
             setScroll={setScroll}
             maxScrolls={maxScrolls}
+            maxPages={maxPages}
+            setMaxPages={setMaxPages}
             setMaxScrolls={setMaxScrolls}
             headless={headless}
             setHeadless={setHeadless}
@@ -295,6 +310,7 @@ export default function App() {
             currentStep={currentStep}
             errorStep={errorStep}
             attempt={attempt}
+            pageInfo={status === 'running' ? pageInfo : null}
           />
 
           <div className="flex-1 min-h-0">

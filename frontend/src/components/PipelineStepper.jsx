@@ -22,7 +22,7 @@ function stepStatus(stepId, index, currentStep, errorStep) {
   return 'pending';
 }
 
-export default function PipelineStepper({ currentStep, errorStep, attempt }) {
+export default function PipelineStepper({ currentStep, errorStep, attempt, pageInfo }) {
   const barRef = useRef(null);
   const nodeRefs = useRef([]);
 
@@ -61,7 +61,10 @@ export default function PipelineStepper({ currentStep, errorStep, attempt }) {
           const st = stepStatus(id, i, currentStep, errorStep);
           // Surface self-healing retries on the LLM steps.
           const retrying = attempt && attempt.current > 1 && (id === 'infer' || id === 'validate') && st !== 'pending';
-          const detail = retrying ? `Attempt ${attempt.current} of ${attempt.max}` : desc;
+          const paging = pageInfo && id === 'fetch';
+          let detail = desc;
+          if (retrying) detail = `Attempt ${attempt.current} of ${attempt.max}`;
+          else if (paging) detail = `Page ${pageInfo.page} of up to ${pageInfo.max}`;
           const node = {
             pending: 'bg-surface border-line text-faint',
             active: 'bg-accent border-accent text-accent-fg ring-4 ring-accent/20',
@@ -80,7 +83,7 @@ export default function PipelineStepper({ currentStep, errorStep, attempt }) {
               </div>
               <div className="min-w-0 px-1">
                 <div className={`text-xs sm:text-sm font-medium truncate ${st === 'pending' ? 'text-muted' : 'text-fg'}`}>{label}</div>
-                <div className={`text-[11px] truncate hidden sm:block ${retrying ? 'text-warn' : 'text-faint'}`}>{detail}</div>
+                <div className={`text-[11px] truncate hidden sm:block ${retrying ? 'text-warn' : paging ? 'text-accent' : 'text-faint'}`}>{detail}</div>
               </div>
             </div>
           );

@@ -103,6 +103,12 @@ class ScrapeRequest(BaseModel):
         default=True,
         description="If False, launches visible Chrome to bypass Akamai/Cloudflare WAFs (e.g. for Naukri).",
     )
+    max_pages: int = Field(
+        default=1,
+        ge=1,
+        le=50,
+        description="Follow 'next page' links up to this many pages and combine the items. List results only.",
+    )
     model: str | None = Field(
         default=None,
         description="Preferred Groq model, tried before the failover pool. Defaults to the pool order.",
@@ -127,6 +133,7 @@ class ScrapeResponse(BaseModel):
     items_count: int = Field(..., description="Number of items extracted.")
     data: list | dict = Field(..., description="The extracted data payload.")
     elapsed_seconds: float = Field(..., description="Wall-clock time taken in seconds.")
+    pages_scraped: int = Field(default=1, description="How many pages were read.")
     error: str | None = Field(default=None, description="Error message if the scrape failed.")
     warnings: list[str] = Field(
         default_factory=list,
@@ -280,6 +287,7 @@ async def _run_scrape(pipeline: ScraperPipeline, request: ScrapeRequest, start: 
         max_scrolls=request.max_scrolls,
         headless=request.headless,
         on_event=on_event,
+        max_pages=request.max_pages,
     )
     return ScrapeResponse(
         success=True,
@@ -287,5 +295,6 @@ async def _run_scrape(pipeline: ScraperPipeline, request: ScrapeRequest, start: 
         items_count=result["items_count"],
         data=result["data"],
         elapsed_seconds=round(time.time() - start, 2),
+        pages_scraped=result.get("pages_scraped", 1),
         warnings=result["warnings"],
     )

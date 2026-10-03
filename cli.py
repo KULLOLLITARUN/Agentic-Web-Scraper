@@ -35,7 +35,18 @@ from rich.table import Table
 # ---------------------------------------------------------------------------
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from dotenv import load_dotenv  # noqa: E402
+
+# Read GROQ_API_KEY from the project's .env, as the API server does.
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+
 from scraper.pipeline import ScraperPipeline  # noqa: E402
+
+# Windows consoles and redirected output default to a legacy code page that
+# can't encode the banner's emoji or many scraped characters.
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8", errors="replace")
 
 console = Console()
 
@@ -64,6 +75,7 @@ async def run_scrape(
     max_retries: int,
     output_file: str | None,
     expect_list: bool,
+    max_pages: int = 1,
 ) -> None:
     """
     Execute the AI scraping pipeline and display results via Rich output.
@@ -80,6 +92,8 @@ async def run_scrape(
         If provided, the extracted JSON data will be written to this path.
     expect_list : bool
         Whether the extracted result is expected to be a list of items.
+    max_pages : int
+        Follow "next page" links up to this many pages.
     """
     print_banner()
     console.print(Rule("Starting Extraction Pipeline"))
@@ -95,6 +109,7 @@ async def run_scrape(
     )
     info_table.add_row("Max retries:", str(max_retries))
     info_table.add_row("Expect list:", str(expect_list))
+    info_table.add_row("Max pages:", str(max_pages))
     console.print(info_table)
     console.print()
 
@@ -109,7 +124,7 @@ async def run_scrape(
         ) as progress:
             progress.add_task("Running AI extraction pipeline...", total=None)
             result = await ScraperPipeline(max_retries=max_retries).run(
-                url, schema, expect_list=expect_list
+                url, schema, expect_list=expect_list, max_pages=max_pages
             )
 
         elapsed = round(time.time() - start, 2)
@@ -121,6 +136,7 @@ async def run_scrape(
         summary_table.add_column(style="bold green", justify="right")
         summary_table.add_column(style="white")
         summary_table.add_row("Items extracted:", str(result["items_count"]))
+        summary_table.add_row("Pages read:", str(result["pages_scraped"]))
         summary_table.add_row("Elapsed time:", f"{elapsed}s")
         console.print(
             Panel(
@@ -175,7 +191,7 @@ def main() -> None:
             '    --schema "Extract all quotes with text, author, and tags"\n\n'
             "  python cli.py https://books.toscrape.com \\\n"
             '    --schema "Extract book titles, prices, and ratings" \\\n'
-            "    --output books.json"
+            "    --pages 5 --output books.json"
         ),
     )
 
@@ -197,6 +213,14 @@ def main() -> None:
         type=int,
         metavar="N",
         help="Max self-healing retry attempts (default: 3).",
+    )
+    parser.add_argument(
+        "--pages",
+        "-p",
+        default=1,
+        type=int,
+        metavar="N",
+        help="Follow 'next page' links up to N pages (default: 1).",
     )
     parser.add_argument(
         "--output",
@@ -231,6 +255,7 @@ def main() -> None:
             max_retries=args.retries,
             output_file=args.output,
             expect_list=not args.no_list,
+            max_pages=args.pages,
         )
     )
 

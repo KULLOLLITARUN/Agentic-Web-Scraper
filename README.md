@@ -205,12 +205,21 @@ curl -X POST "http://127.0.0.1:8000/scrape" \
     }
   ],
   "elapsed_seconds": 1.48,
+  "pages_scraped": 1,
   "error": null,
   "warnings": []
 }
 ```
 
-`warnings` lists reasons the data may be incomplete, e.g. the page text was longer than `max_chars` or the model's output was cut off. Optional request fields: `model` (preferred Groq model), `api_key` (overrides `GROQ_API_KEY`) and `max_chars` (page text limit, default 12,000).
+`warnings` lists reasons the data may be incomplete, e.g. the page text was longer than `max_chars` or the model's output was cut off. Optional request fields: `max_pages` (see below), `model` (preferred Groq model), `api_key` (overrides `GROQ_API_KEY`) and `max_chars` (page text limit, default 12,000).
+
+### Multiple pages
+
+Set `"max_pages": 10` to follow "next page" links (`rel="next"`, a `.next` pager, or a link labelled Next/More) and combine the items from every page. Scraping stops early when a page has no next link. If a later page fails, the items already collected are returned with a warning. From the CLI:
+
+```bash
+python cli.py https://quotes.toscrape.com -s "Each quote: text (string), author (string)" --pages 10 -o quotes.json
+```
 
 ### Streaming progress
 
