@@ -11,7 +11,7 @@ import logging
 from typing import Any, Callable
 
 from scraper.navigator import Navigator
-from scraper.distiller import Distiller
+from scraper.distiller import Distiller, wanted_attributes
 from scraper.brain import Brain
 from scraper.validator import SchemaMismatchError, Validator, ValidationError
 
@@ -126,7 +126,9 @@ class ScraperPipeline:
         )
         self._emit("step", step="distill", html_chars=len(raw_html))
         # BeautifulSoup parsing is CPU-bound; keep it off the event loop.
-        cleaned: str = await asyncio.to_thread(self._distiller.distill, raw_html)
+        cleaned: str = await asyncio.to_thread(
+            self._distiller.distill, raw_html, url, **wanted_attributes(schema_description)
+        )
         logger.info("       %d chars after distillation", len(cleaned))
 
         warnings: list[str] = []

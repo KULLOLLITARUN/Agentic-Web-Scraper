@@ -104,6 +104,7 @@ class Brain:
                     ],
                     temperature=0.3,
                     max_tokens=token_budget,
+                    **_model_options(model_name),
                 )
                 content = (response.choices[0].message.content or "").strip()
                 if content:
@@ -121,6 +122,20 @@ class Brain:
                     await asyncio.sleep(1)
 
         raise last_error or RuntimeError("All models in the extraction pool exhausted.")
+
+
+def _model_options(model_name: str) -> dict:
+    """Extra request options for models that need them.
+
+    gpt-oss reasons before answering, and those hidden tokens count against
+    ``max_tokens``. Extraction needs little reasoning: on a 30-story Hacker
+    News page the default effort spent 1,822 of 3,327 output tokens
+    reasoning (close to cutting off the JSON); "low" spent 50 with the same
+    result.
+    """
+    if model_name.startswith("openai/gpt-oss"):
+        return {"reasoning_effort": "low"}
+    return {}
 
 
 def _error_code(error: groq.APIError) -> str:

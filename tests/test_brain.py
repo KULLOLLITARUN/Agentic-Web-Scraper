@@ -133,3 +133,26 @@ def test_raises_last_error_when_every_model_fails():
 
     with pytest.raises(groq.RateLimitError):
         extract(b)
+
+
+@pytest.mark.parametrize(
+    "model, expected",
+    [
+        ("openai/gpt-oss-120b", {"reasoning_effort": "low"}),
+        ("openai/gpt-oss-20b", {"reasoning_effort": "low"}),
+        ("qwen/qwen3.8-27b", {}),
+    ],
+)
+def test_reasoning_effort_only_sent_to_gpt_oss(model, expected):
+    b, fake = make_brain(["[]"], model=model)
+    captured = {}
+    original = fake.create
+
+    async def spy(**kw):
+        captured.update(kw)
+        return await original(**kw)
+
+    fake.create = spy
+    extract(b)
+
+    assert {k: v for k, v in captured.items() if k == "reasoning_effort"} == expected
