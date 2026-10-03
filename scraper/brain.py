@@ -5,12 +5,12 @@ AI extraction engine — turns distilled website text into structured JSON.
 Equipped with multi-model auto-failover to handle Groq rate limits.
 """
 
+import asyncio
 import os
-import time
 import logging
 
 import groq
-from groq import Groq
+from groq import AsyncGroq
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +46,11 @@ class Brain:
                 "GROQ_API_KEY environment variable is not set. "
                 "Please export your Groq API key before running the scraper."
             )
-        self._client = Groq(api_key=api_key)
+        self._client = AsyncGroq(api_key=api_key)
         # A preferred model is tried first; the rest of the pool stays as failover.
         self._models = [model] + [m for m in MODELS if m != model] if model else list(MODELS)
 
-    def extract(
+    async def extract(
         self,
         cleaned_text: str,
         schema_description: str,
@@ -94,7 +94,7 @@ class Brain:
 
             try:
                 logger.info("Attempting extraction with model %s (budget=%d tokens)...", model_name, token_budget)
-                response = self._client.chat.completions.create(
+                response = await self._client.chat.completions.create(
                     model=model_name,
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT},
@@ -116,7 +116,7 @@ class Brain:
                 last_error = e
                 logger.warning("%s failed (%s). Failing over to next model...", model_name, e)
                 if isinstance(e, groq.RateLimitError):
-                    time.sleep(1)
+                    await asyncio.sleep(1)
 
         raise last_error or RuntimeError("All models in the extraction pool exhausted.")
 

@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 
 import groq
@@ -26,7 +27,7 @@ class FakeCompletions:
         self.outcomes = list(outcomes)
         self.models = []
 
-    def create(self, model, **_):
+    async def create(self, model, **_):
         self.models.append(model)
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, Exception):
@@ -36,7 +37,10 @@ class FakeCompletions:
 
 @pytest.fixture(autouse=True)
 def no_sleep(monkeypatch):
-    monkeypatch.setattr(brain_module.time, "sleep", lambda _: None)
+    async def instant(_):
+        return None
+
+    monkeypatch.setattr(brain_module.asyncio, "sleep", instant)
 
 
 def make_brain(outcomes, **kwargs):
@@ -47,7 +51,7 @@ def make_brain(outcomes, **kwargs):
 
 
 def extract(b):
-    return b.extract(cleaned_text="page text", schema_description="title (string)")
+    return asyncio.run(b.extract(cleaned_text="page text", schema_description="title (string)"))
 
 
 def test_default_model_order():
@@ -70,7 +74,12 @@ def test_prompt_has_no_item_cap():
     b, fake = make_brain(["[]"])
     captured = {}
     original = fake.create
-    fake.create = lambda **kw: captured.update(kw) or original(**kw)
+
+    async def spy(**kw):
+        captured.update(kw)
+        return await original(**kw)
+
+    fake.create = spy
     extract(b)
 
     prompt = captured["messages"][1]["content"]

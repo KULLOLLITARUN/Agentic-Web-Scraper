@@ -106,7 +106,8 @@ class ScraperPipeline:
         logger.info(
             "[2/5] Distiller: Cleaning HTML (%d chars raw)", len(raw_html)
         )
-        cleaned: str = self._distiller.distill(raw_html)
+        # BeautifulSoup parsing is CPU-bound; keep it off the event loop.
+        cleaned: str = await asyncio.to_thread(self._distiller.distill, raw_html)
         logger.info("       %d chars after distillation", len(cleaned))
 
         warnings: list[str] = []
@@ -126,7 +127,7 @@ class ScraperPipeline:
         last_error: str = ""
 
         for attempt in range(self.max_retries):
-            raw_response: str = self._brain.extract(
+            raw_response: str = await self._brain.extract(
                 cleaned_text=cleaned,
                 schema_description=schema_description,
                 previous_error=previous_error,
