@@ -4,7 +4,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat&logo=fastapi&logoColor=white)
-![Playwright](https://img.shields.io/badge/Playwright-Stealth-2EAD33?style=flat&logo=playwright&logoColor=white)
+![Playwright](https://img.shields.io/badge/Playwright-Headless-2EAD33?style=flat&logo=playwright&logoColor=white)
 ![Groq](https://img.shields.io/badge/Groq%20LPU-Qwen%2027B-F55036?style=flat)
 ![Pydantic](https://img.shields.io/badge/Pydantic-2.0-E92063?style=flat&logo=pydantic&logoColor=white)
 ![React](https://img.shields.io/badge/React-18-61DAFB?style=flat&logo=react&logoColor=black)
@@ -42,7 +42,7 @@ The moment a website updates its UI design, introduces dynamic obfuscated class 
 
 This system replaces rigid selectors with **visual and semantic reasoning**:
 1. You describe the data you want in **plain English** (e.g., *"Each job: title, company, salary, experience, skills"*).
-2. The headless browser renders the page, executes client-side JavaScript, bypasses anti-bot heuristics, and dynamically scrolls to hydrate lazy elements.
+2. The headless browser renders the page, executes client-side JavaScript, and dynamically scrolls to hydrate lazy elements.
 3. An **HTML Distillation Engine** compresses the DOM by **85–97%** in under 8ms.
 4. An **autonomous Groq LPU LLM (`qwen/qwen3.8-27b`)** identifies entities by semantic context rather than class names.
 5. A deterministic **Pydantic Self-Healing Validator** audits the output. If a schema drift or type clash occurs, it automatically feeds the validation diff back to the LLM to self-correct in real time.
@@ -53,8 +53,8 @@ This system replaces rigid selectors with **visual and semantic reasoning**:
 
 ```
 ┌─────────────────────┐
-│ 1. STEALTH NAVIGATOR│  Playwright (Chrome Channel)
-│  (Headless Engine)  │  • Anti-bot heuristics & script injection
+│ 1. BROWSER NAVIGATOR│  Playwright (Chrome Channel)
+│  (Headless Engine)  │  • Full client-side JavaScript rendering
 └──────────┬──────────┘  • Dynamic auto-scroll & lazy-load hydration
            │ Rendered DOM
            ▼
@@ -102,9 +102,8 @@ Unlike brittle scripts that throw exceptions when a site changes, the pipeline i
 * **Layer 3:** Discards ghost / empty hallucinations.
 * **Layer 4:** Enforces strict Pydantic type specifications. If an error occurs, it formats the exact diff and re-prompts the model until valid.
 
-### 4. 100% Silent Headless Mode & Anti-Bot Stealth
-* Disables automation flags (`--disable-blink-features=AutomationControlled`).
-* Emulates realistic Chrome on Windows with complete client hints and authentic platform parameters.
+### 4. Headless Rendering for Modern SPAs
+* Runs fully headless, rendering client-side JavaScript before extraction.
 * Avoids global `Accept` header conflicts, preserving background client-side AJAX/JSON calls for modern React, Vue, and Next.js applications.
 
 ---
@@ -116,7 +115,6 @@ Unlike brittle scripts that throw exceptions when a site changes, the pipeline i
 | **Quotes to Scrape** | Static Server HTML | *"Each quote: text, author, tags"* | ✅ **10 quotes**, 0 retries, 85% compression |
 | **Apple Inc.** | Enterprise E-Commerce | *"Find all phones, slogans, and prices"* | ✅ **6 models extracted** with Indian Rupee (`₹`) prices |
 | **Y Combinator** | Real-time Job Directory | *"Find AI roles: company, title"* | ✅ **30 jobs extracted** in a single pass |
-| **Naukri.com** | Akamai WAF + React SPA | *"Each job: title, company, experience, salary, skills"* | ✅ **22 live AI/ML engineer jobs** in **100% headless mode** |
 
 ---
 
@@ -220,7 +218,12 @@ For high-scale scraping across thousands of pages, the system architecture suppo
 1. **Distributed Asynchronous Workers:** Decouple crawling from web sockets using Celery / Redis task queues.
 2. **Chunked Database Streaming:** Stream records directly into PostgreSQL / SQLite per page to guarantee zero data loss.
 3. **Hybrid Extraction Engine:** Use Groq LLM on Page 1 to infer layout structure, then switch to compiled pure-Python extractors for Pages 2–1,000 (**99% token cost reduction at 0.01s/page**).
-4. **Proxy Pool Integration:** Rotate residential IP proxies to bypass strict enterprise perimeter rate limits.
+
+---
+
+## ⚖️ Responsible Use
+
+Only scrape sites you are permitted to access. Respect each site's terms of service, `robots.txt` and rate limits, and do not use this tool to collect personal data without a lawful basis.
 
 ---
 
