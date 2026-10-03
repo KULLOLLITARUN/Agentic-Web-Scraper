@@ -5,7 +5,9 @@ import ConfigPanel from './components/ConfigPanel';
 import InspectorPanel from './components/InspectorPanel';
 import HistoryModal from './components/HistoryModal';
 import SettingsModal from './components/SettingsModal';
+import { readNdjson } from './lib/ndjson';
 
+const STEP_ORDER = ['fetch', 'distill', 'infer', 'validate'];
 const DEFAULT_URL = 'https://quotes.toscrape.com';
 const LEGACY_DEFAULT_MODEL = 'qwen/qwen3.8-27b';
 const DEFAULT_SCHEMA = 'Each quote: text (string), author (string), tags (list of strings)';
@@ -27,6 +29,7 @@ export default function App() {
   const [currentStep, setCurrentStep] = useState('idle'); // fetch | distill | infer | validate | done
   const stepRef = useRef('idle');
   const [errorStep, setErrorStep] = useState(null);
+  const [attempt, setAttempt] = useState(null);
   const [resultData, setResultData] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
   const [warnings, setWarnings] = useState([]);
@@ -66,10 +69,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    stepRef.current = currentStep;
-  }, [currentStep]);
-
-  useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     try {
       localStorage.setItem('studio_theme', theme);
@@ -94,32 +93,16 @@ export default function App() {
     setErrorMessage(null);
     setWarnings([]);
     setErrorStep(null);
+    setAttempt(null);
     setCurrentStep('fetch');
+    stepRef.current = 'fetch';
 
     const startTime = performance.now();
     addLog(`Starting scrape of ${url}`, 'info', 'START');
 
-    const stepTimers = [
-      setTimeout(() => {
-        setCurrentStep('distill');
-        addLog('Page loaded. Cleaning HTML…', 'info', 'CLEAN');
-      }, 1200),
-      setTimeout(() => {
-        setCurrentStep('infer');
-        addLog('Extracting fields from page text…', 'info', 'EXTRACT');
-      }, 2600),
-      setTimeout(() => {
-        setCurrentStep('validate');
-        addLog('Validating output against your fields…', 'info', 'VALIDATE');
-      }, 4200)
-    ];
-
     try {
-      const apiUrl = config.backendUrl 
-        ? `${config.backendUrl.replace(/\/$/, '')}/scrape`
-        : 'http://localhost:8000/scrape';
-
-      const response = await fetch(apiUrl, {
+      const base = (config.backendUrl || 'http://localhost:8000').replace(/\/$/, '');
+      const response = await fetch(`${base}/scrape/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -137,39 +120,49 @@ export default function App() {
         })
       });
 
-      stepTimers.forEach(clearTimeout);
-
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        let errMsg = 'Scrape execution failed';
+        let errMsg = `Server returned HTTP ${response.status}`;
         if (typeof errorData.detail === 'string') {
           errMsg = errorData.detail;
         } else if (Array.isArray(errorData.detail)) {
           errMsg = errorData.detail.map(d => d.msg || d.message || JSON.stringify(d)).join('; ');
-        } else if (errorData.error) {
-          errMsg = typeof errorData.error === 'string' ? errorData.error : JSON.stringify(errorData.error);
-        } else {
-          errMsg = `Server returned HTTP ${response.status}`;
         }
         throw new Error(errMsg);
       }
 
-      const resJson = await response.json();
-      const extractedData = resJson.data !== undefined ? resJson.data : resJson;
-      const elapsed = resJson.elapsed_seconds ? String(resJson.elapsed_seconds) : ((performance.now() - startTime) / 1000).toFixed(2);
-      const itemsCount = resJson.items_count !== undefined 
-        ? resJson.items_count 
-        : (Array.isArray(extractedData) ? extractedData.length : (extractedData ? 1 : 0));
+      let final = null;
+      for await (const event of readNdjson(response)) {
+        if (event.type === 'step') {
+          handleStepEvent(event);
+        } else if (event.type === 'retry') {
+          addLog(`Attempt ${event.attempt} of ${event.max_attempts} failed validation: ${event.error}`, 'retry', 'RETRY');
+        } else if (event.type === 'warning') {
+          addLog(event.message, 'warn', 'WARNING');
+        } else if (event.type === 'result' || event.type === 'error') {
+          final = event;
+        }
+      }
+
+      if (!final) throw new Error('Lost connection to the backend before the scrape finished.');
+      if (final.type === 'error') {
+        const err = new Error(final.message || 'Scrape failed.');
+        err.step = final.step;
+        throw err;
+      }
+
+      const extractedData = final.data;
+      const elapsed = String(final.elapsed_seconds);
+      const itemsCount = final.items_count;
+      const runWarnings = final.warnings || [];
 
       setCurrentStep('done');
       setStatus('done');
       setResultData(extractedData);
-      const runWarnings = resJson.warnings || [];
       setWarnings(runWarnings);
       setMetrics({ elapsed, itemsCount });
 
       addLog(`Done: ${itemsCount} records in ${elapsed}s`, 'info', 'DONE');
-      runWarnings.forEach((w) => addLog(w, 'warn', 'WARNING'));
 
       // Save to history
       const newRun = {
@@ -187,9 +180,10 @@ export default function App() {
       localStorage.setItem('ai_scraper_history', JSON.stringify(updatedHistory));
 
     } catch (err) {
-      stepTimers.forEach(clearTimeout);
+      // The backend reports which step failed; otherwise blame the step we last saw.
+      const failed = err.step || stepRef.current;
       setStatus('error');
-      setErrorStep(stepRef.current === 'idle' || stepRef.current === 'done' ? 'fetch' : stepRef.current);
+      setErrorStep(STEP_ORDER.includes(failed) ? failed : 'fetch');
       setErrorMessage(err.message || 'Scrape execution failed.');
 
       setMetrics({ itemsCount: 0, elapsed: ((performance.now() - startTime) / 1000).toFixed(2) });
@@ -198,11 +192,27 @@ export default function App() {
     }
   };
 
+  const handleStepEvent = (event) => {
+    stepRef.current = event.step;
+    if (event.step !== 'done') setCurrentStep(event.step);
+    if (event.attempt) setAttempt({ current: event.attempt, max: event.max_attempts });
+
+    if (event.step === 'distill') {
+      addLog(`Page loaded (${event.html_chars.toLocaleString()} chars of HTML). Cleaning…`, 'info', 'CLEAN');
+    } else if (event.step === 'infer') {
+      const suffix = event.attempt > 1 ? ` (attempt ${event.attempt} of ${event.max_attempts})` : '';
+      addLog(`Extracting fields from ${event.text_chars.toLocaleString()} chars of text${suffix}…`, 'info', 'EXTRACT');
+    } else if (event.step === 'validate') {
+      addLog('Validating output against your fields…', 'info', 'VALIDATE');
+    }
+  };
+
   const handleSelectHistoryRun = (run) => {
     setUrl(run.url);
     setSchema(run.schema);
     setResultData(run.data);
     setWarnings(run.warnings || []);
+    setAttempt(null);
     setStatus('done');
     setCurrentStep('done');
     setErrorStep(null);
@@ -263,6 +273,7 @@ export default function App() {
           <PipelineStepper
             currentStep={currentStep}
             errorStep={errorStep}
+            attempt={attempt}
           />
 
           <div className="flex-1 min-h-0">

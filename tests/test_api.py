@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -13,10 +15,16 @@ class FakePipeline:
 
     def __init__(self, **kwargs):
         FakePipeline.last_kwargs = kwargs
+        self.step = "idle"
 
-    async def run(self, *args, **kwargs):
+    async def run(self, *args, on_event=None, **kwargs):
+        emit = on_event or (lambda event: None)
+        for step in ("fetch", "distill"):
+            self.step = step
+            emit({"type": "step", "step": step})
         if FakePipeline.error:
             raise FakePipeline.error
+        emit({"type": "step", "step": "done"})
         return FakePipeline.result
 
 
@@ -78,3 +86,31 @@ def test_pipeline_failure_returns_500_with_message(client):
     assert r.status_code == 500
     assert r.json()["success"] is False
     assert r.json()["error"] == "all retries failed"
+
+
+def stream(client, **body):
+    r = client.post("/scrape/stream", json={"url": "https://example.com", **body})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/x-ndjson")
+    return [json.loads(line) for line in r.text.splitlines() if line]
+
+
+def test_stream_reports_steps_then_result(client):
+    events = stream(client)
+
+    assert [e.get("step") for e in events if e["type"] == "step"] == ["fetch", "distill", "done"]
+    assert events[-1]["type"] == "result"
+    assert events[-1]["success"] is True
+    assert events[-1]["data"] == [{"x": 1}]
+
+
+def test_stream_reports_failed_step(client):
+    FakePipeline.error = RuntimeError("model said no")
+    events = stream(client)
+
+    assert events[-1] == {
+        "type": "error",
+        "step": "distill",
+        "message": "model said no",
+        "elapsed_seconds": events[-1]["elapsed_seconds"],
+    }

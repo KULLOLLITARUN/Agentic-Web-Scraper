@@ -18,7 +18,7 @@ if sys.platform == "win32":
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
@@ -186,29 +186,7 @@ async def scrape(request: ScrapeRequest) -> ScrapeResponse:
     """
     start = time.time()
     try:
-        target_schema = request.schema_description or request.instruction or "Extract structured data from the page"
-        pipeline = ScraperPipeline(
-            max_retries=request.max_retries,
-            model=request.model or None,
-            api_key=request.api_key or None,
-            max_chars=request.max_chars,
-        )
-        result = await pipeline.run(
-            request.url,
-            target_schema,
-            request.expect_list,
-            scroll=request.scroll,
-            max_scrolls=request.max_scrolls,
-            headless=request.headless,
-        )
-        return ScrapeResponse(
-            success=True,
-            url=result["url"],
-            items_count=result["items_count"],
-            data=result["data"],
-            elapsed_seconds=round(time.time() - start, 2),
-            warnings=result["warnings"],
-        )
+        return await _run_scrape(_build_pipeline(request), request, start)
     except Exception as e:
         logger.error("Scrape failed for %s: %s", request.url, e, exc_info=True)
         return JSONResponse(
@@ -222,3 +200,85 @@ async def scrape(request: ScrapeRequest) -> ScrapeResponse:
                 error=str(e),
             ).model_dump(),
         )
+
+
+@app.post(
+    "/scrape/stream",
+    summary="Run the scraping pipeline and stream progress",
+    responses={200: {"description": "Newline-delimited JSON progress events", "content": {"application/x-ndjson": {}}}},
+)
+async def scrape_stream(request: ScrapeRequest) -> StreamingResponse:
+    """
+    Same as `/scrape`, but streams one JSON object per line as the pipeline runs.
+
+    Event types:
+    - `step` — a step started: `fetch`, `distill`, `infer`, `validate` or `done`
+      (`infer`/`validate` include `attempt` and `max_attempts`).
+    - `retry` — an attempt failed validation; `error` says why.
+    - `warning` — the data may be incomplete; `message` says why.
+    - `result` — final event on success; same fields as the `/scrape` response.
+    - `error` — final event on failure, with `message` and the failed `step`.
+
+    Closing the connection cancels the scrape.
+    """
+    queue: asyncio.Queue[dict | None] = asyncio.Queue()
+
+    async def worker() -> None:
+        start = time.time()
+        pipeline = None
+        try:
+            pipeline = _build_pipeline(request)
+            response = await _run_scrape(pipeline, request, start, on_event=queue.put_nowait)
+            queue.put_nowait({"type": "result", **response.model_dump()})
+        except Exception as e:
+            logger.error("Scrape failed for %s: %s", request.url, e, exc_info=True)
+            queue.put_nowait({
+                "type": "error",
+                "step": pipeline.step if pipeline else "idle",
+                "message": str(e),
+                "elapsed_seconds": round(time.time() - start, 2),
+            })
+        finally:
+            queue.put_nowait(None)
+
+    async def events():
+        task = asyncio.create_task(worker())
+        try:
+            while (event := await queue.get()) is not None:
+                yield json.dumps(event) + "\n"
+        finally:
+            # Client went away mid-scrape: stop the browser and LLM calls too.
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(events(), media_type="application/x-ndjson")
+
+
+def _build_pipeline(request: ScrapeRequest) -> ScraperPipeline:
+    return ScraperPipeline(
+        max_retries=request.max_retries,
+        model=request.model or None,
+        api_key=request.api_key or None,
+        max_chars=request.max_chars,
+    )
+
+
+async def _run_scrape(pipeline: ScraperPipeline, request: ScrapeRequest, start: float, on_event=None) -> ScrapeResponse:
+    target_schema = request.schema_description or request.instruction or "Extract structured data from the page"
+    result = await pipeline.run(
+        request.url,
+        target_schema,
+        request.expect_list,
+        scroll=request.scroll,
+        max_scrolls=request.max_scrolls,
+        headless=request.headless,
+        on_event=on_event,
+    )
+    return ScrapeResponse(
+        success=True,
+        url=result["url"],
+        items_count=result["items_count"],
+        data=result["data"],
+        elapsed_seconds=round(time.time() - start, 2),
+        warnings=result["warnings"],
+    )

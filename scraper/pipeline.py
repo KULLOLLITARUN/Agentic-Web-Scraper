@@ -8,7 +8,7 @@ with an agentic self-healing retry loop.
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from scraper.navigator import Navigator
 from scraper.distiller import Distiller
@@ -45,6 +45,16 @@ class ScraperPipeline:
         self._distiller = Distiller(max_chars) if max_chars else Distiller()
         self._brain = Brain(api_key=api_key, model=model)
         self._validator = Validator()
+        #: The step currently running (fetch, distill, infer, validate, done).
+        self.step = "idle"
+        self._on_event: Callable[[dict[str, Any]], None] | None = None
+
+    def _emit(self, event_type: str, **fields: Any) -> None:
+        """Report progress to the ``on_event`` callback, if one was given."""
+        if event_type == "step":
+            self.step = fields["step"]
+        if self._on_event is not None:
+            self._on_event({"type": event_type, **fields})
 
     async def run(
         self,
@@ -54,6 +64,7 @@ class ScraperPipeline:
         scroll: bool = True,
         max_scrolls: int = 5,
         headless: bool = True,
+        on_event: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Fetch *url*, extract data matching *schema_description*, and return it.
 
@@ -74,6 +85,10 @@ class ScraperPipeline:
             expect_list: If ``True`` (default), the LLM output must be a
                 non-empty JSON array.  Set to ``False`` for single-object
                 extraction.
+            on_event: Optional callback receiving progress events as they
+                happen: ``{"type": "step", "step": ...}`` when a step starts,
+                ``{"type": "retry", ...}`` when an attempt fails validation and
+                ``{"type": "warning", "message": ...}`` for incomplete data.
 
         Returns:
             A ``dict`` with the following keys:
@@ -89,7 +104,10 @@ class ScraperPipeline:
             RuntimeError: If all retry attempts are exhausted without
                 producing valid data.
         """
+        self._on_event = on_event
+
         # ── Step 1: Fetch ────────────────────────────────────────────────────
+        self._emit("step", step="fetch")
         logger.info(
             "[1/5] Navigator: Fetching %s (scroll=%s, max_scrolls=%d, headless=%s)",
             url,
@@ -106,6 +124,7 @@ class ScraperPipeline:
         logger.info(
             "[2/5] Distiller: Cleaning HTML (%d chars raw)", len(raw_html)
         )
+        self._emit("step", step="distill", html_chars=len(raw_html))
         # BeautifulSoup parsing is CPU-bound; keep it off the event loop.
         cleaned: str = await asyncio.to_thread(self._distiller.distill, raw_html)
         logger.info("       %d chars after distillation", len(cleaned))
@@ -118,6 +137,7 @@ class ScraperPipeline:
                 "down the page may be missing. Raise 'Max page text' in Settings."
             )
             logger.warning(warnings[-1])
+            self._emit("warning", message=warnings[-1])
 
         # ── Step 3: LLM extraction with self-healing retry loop ──────────────
         logger.info("[3/5] Brain: Sending to Groq LLM")
@@ -127,6 +147,8 @@ class ScraperPipeline:
         last_error: str = ""
 
         for attempt in range(self.max_retries):
+            progress = {"attempt": attempt + 1, "max_attempts": self.max_retries}
+            self._emit("step", step="infer", text_chars=len(cleaned), **progress)
             raw_response: str = await self._brain.extract(
                 cleaned_text=cleaned,
                 schema_description=schema_description,
@@ -139,6 +161,7 @@ class ScraperPipeline:
                 self.max_retries,
             )
 
+            self._emit("step", step="validate", **progress)
             try:
                 validated_data = self._validator.run_all(
                     raw_response, expect_list=expect_list
@@ -152,6 +175,7 @@ class ScraperPipeline:
                     "Attempt %d failed: %s", attempt + 1, last_error
                 )
                 previous_error = last_error
+                self._emit("retry", error=last_error, **progress)
                 # continue to next attempt
         else:
             raise RuntimeError(
@@ -169,6 +193,9 @@ class ScraperPipeline:
                 f"{items_count} complete items were kept, later ones are missing."
             )
             logger.warning(warnings[-1])
+            self._emit("warning", message=warnings[-1])
+
+        self._emit("step", step="done")
 
         return {
             "url": url,

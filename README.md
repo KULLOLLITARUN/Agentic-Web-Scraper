@@ -205,9 +205,33 @@ curl -X POST "http://127.0.0.1:8000/scrape" \
     }
   ],
   "elapsed_seconds": 1.48,
-  "error": null
+  "error": null,
+  "warnings": []
 }
 ```
+
+`warnings` lists reasons the data may be incomplete, e.g. the page text was longer than `max_chars` or the model's output was cut off. Optional request fields: `model` (preferred Groq model), `api_key` (overrides `GROQ_API_KEY`) and `max_chars` (page text limit, default 12,000).
+
+### Streaming progress
+
+`POST /scrape/stream` takes the same body and returns newline-delimited JSON, one event per line, as the pipeline runs. The Workbench uses this to drive its progress tracker.
+
+```bash
+curl -N -X POST "http://127.0.0.1:8000/scrape/stream" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://quotes.toscrape.com", "schema_description": "Each quote: text (string), author (string)"}'
+```
+
+```json
+{"type": "step", "step": "fetch"}
+{"type": "step", "step": "distill", "html_chars": 10968}
+{"type": "step", "step": "infer", "text_chars": 1629, "attempt": 1, "max_attempts": 3}
+{"type": "step", "step": "validate", "attempt": 1, "max_attempts": 3}
+{"type": "step", "step": "done"}
+{"type": "result", "success": true, "items_count": 10, "data": [...], "warnings": [], ...}
+```
+
+A failed validation emits `{"type": "retry", "attempt": 1, "error": "..."}` before the next attempt. A failed scrape ends with `{"type": "error", "step": "fetch", "message": "..."}`. Closing the connection cancels the scrape.
 
 ---
 
