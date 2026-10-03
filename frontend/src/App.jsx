@@ -28,6 +28,7 @@ export default function App() {
   const [status, setStatus] = useState('idle'); // idle | running | done | error
   const [currentStep, setCurrentStep] = useState('idle'); // fetch | distill | infer | validate | done
   const stepRef = useRef('idle');
+  const abortRef = useRef(null);
   const [errorStep, setErrorStep] = useState(null);
   const [attempt, setAttempt] = useState(null);
   const [resultData, setResultData] = useState(null);
@@ -88,6 +89,10 @@ export default function App() {
   const handleRun = async () => {
     if (!url || !schema) return;
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setStatus('running');
     setResultData(null);
     setErrorMessage(null);
@@ -104,6 +109,7 @@ export default function App() {
       const base = (config.backendUrl || 'http://localhost:8000').replace(/\/$/, '');
       const response = await fetch(`${base}/scrape/stream`, {
         method: 'POST',
+        signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url: url.trim(),
@@ -185,6 +191,15 @@ export default function App() {
       localStorage.setItem('ai_scraper_history', JSON.stringify(updatedHistory));
 
     } catch (err) {
+      if (err.name === 'AbortError') {
+        // Cancelled by the user; closing the stream also stops the backend.
+        setStatus('idle');
+        setCurrentStep('idle');
+        setAttempt(null);
+        setMetrics({ itemsCount: 0, elapsed: ((performance.now() - startTime) / 1000).toFixed(2) });
+        addLog('Scrape cancelled.', 'warn', 'CANCELLED');
+        return;
+      }
       // The backend reports which step failed; otherwise blame the step we last saw.
       const failed = err.step || stepRef.current;
       setStatus('error');
@@ -268,6 +283,7 @@ export default function App() {
             headless={headless}
             setHeadless={setHeadless}
             onRun={handleRun}
+            onCancel={() => abortRef.current?.abort()}
             isLoading={status === 'running'}
             logs={logs}
             onClearLogs={() => setLogs([])}

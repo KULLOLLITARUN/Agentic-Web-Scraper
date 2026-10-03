@@ -230,6 +230,13 @@ async def scrape_stream(request: ScrapeRequest) -> StreamingResponse:
             pipeline = _build_pipeline(request)
             response = await _run_scrape(pipeline, request, start, on_event=queue.put_nowait)
             queue.put_nowait({"type": "result", **response.model_dump()})
+        except asyncio.CancelledError:
+            logger.info(
+                "Scrape cancelled for %s during %s (client disconnected)",
+                request.url,
+                pipeline.step if pipeline else "setup",
+            )
+            raise
         except Exception as e:
             logger.error("Scrape failed for %s: %s", request.url, e, exc_info=True)
             queue.put_nowait({

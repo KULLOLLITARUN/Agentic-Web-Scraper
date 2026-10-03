@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Play, Loader2, Link2, ListChecks, SlidersHorizontal, ScrollText, Trash2 } from 'lucide-react';
+import { Play, Square, Loader2, Link2, ListChecks, SlidersHorizontal, ScrollText, Trash2 } from 'lucide-react';
 import { fadeUp, motion } from '../lib/motion';
 
 const PRESETS = [
@@ -87,6 +87,7 @@ export default function ConfigPanel({
   headless = true,
   setHeadless,
   onRun,
+  onCancel,
   isLoading,
   logs = [],
   onClearLogs,
@@ -250,17 +251,24 @@ export default function ConfigPanel({
         </div>
       </section>
 
-      {/* Run */}
+      {/* Run / Cancel */}
       <button
         data-enter
         ref={runRef}
-        onClick={run}
-        disabled={!canRun}
-        className="h-11 w-full rounded-xl bg-accent text-accent-fg font-semibold text-sm flex items-center justify-center gap-2 shadow-lg shadow-accent/25 hover:brightness-110 transition disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed"
+        onClick={isLoading ? onCancel : run}
+        disabled={!isLoading && !canRun}
+        className={`group h-11 w-full rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed ${
+          isLoading
+            ? 'border border-line bg-surface text-fg hover:border-bad/50 hover:text-bad'
+            : 'bg-accent text-accent-fg shadow-lg shadow-accent/25 hover:brightness-110'
+        }`}
       >
         {isLoading ? (
           <>
-            <Loader2 size={16} className="animate-spin" /> Scraping…
+            <Loader2 size={16} className="animate-spin group-hover:hidden" />
+            <Square size={13} fill="currentColor" className="hidden group-hover:block" />
+            <span className="group-hover:hidden">Scraping…</span>
+            <span className="hidden group-hover:inline">Cancel scrape</span>
           </>
         ) : (
           <>
