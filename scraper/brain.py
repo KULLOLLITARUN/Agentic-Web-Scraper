@@ -8,6 +8,8 @@ Equipped with multi-model auto-failover to handle Groq rate limits.
 import os
 import time
 import logging
+
+import groq
 from groq import Groq
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,9 @@ MODELS = [
     "openai/gpt-oss-20b",
     "qwen/qwen3.8-27b"
 ]
+
+# Error codes meaning "this particular model can't be used" — worth failing over.
+MODEL_ERROR_CODES = {"model_not_found", "model_decommissioned", "model_not_active"}
 
 
 class Brain:
@@ -53,8 +58,9 @@ class Brain:
     ) -> str:
         """Call the LLM to extract structured data from *cleaned_text*.
 
-        Automatically fails over across models if a 429 rate limit or token
-        exhaustion error occurs.
+        Fails over to the next model on rate limits, oversized requests,
+        server/network errors or an unavailable model. Errors that would hit
+        every model (invalid API key, malformed request) are raised at once.
         """
         user_parts: list[str] = [
             "## DATA SCHEMA (what to extract):",
@@ -97,23 +103,41 @@ class Brain:
                     temperature=0.3,
                     max_tokens=token_budget,
                 )
-                content = response.choices[0].message.content.strip()
+                content = (response.choices[0].message.content or "").strip()
                 if content:
                     return content
+                logger.warning("Empty response from %s. Failing over to next model...", model_name)
 
-            except Exception as e:
+            except groq.APIError as e:
+                if not _should_failover(e):
+                    # The same error would hit every model (bad key, bad request),
+                    # so surface it instead of hiding it behind a failover.
+                    raise
                 last_error = e
-                err_msg = str(e).lower()
-                if "rate_limit" in err_msg or "429" in err_msg or "tokens" in err_msg or "otpm" in err_msg:
-                    logger.warning(
-                        "Rate limit on %s (error: %s). Auto-failing over to next model in pool...",
-                        model_name,
-                        e,
-                    )
+                logger.warning("%s failed (%s). Failing over to next model...", model_name, e)
+                if isinstance(e, groq.RateLimitError):
                     time.sleep(1)
-                    continue
-                else:
-                    logger.error("Non-rate-limit error on %s: %s", model_name, e)
-                    continue
 
         raise last_error or RuntimeError("All models in the extraction pool exhausted.")
+
+
+def _error_code(error: groq.APIError) -> str:
+    """Return the API error code (e.g. ``model_not_found``) if the body has one."""
+    body = error.body if isinstance(error.body, dict) else {}
+    inner = body.get("error") if isinstance(body.get("error"), dict) else body
+    return str(inner.get("code") or "")
+
+
+def _should_failover(error: groq.APIError) -> bool:
+    """Decide whether another model might succeed where this one failed.
+
+    Rate limits, oversized requests, server errors and network problems are
+    specific to one model or moment, so the next model is worth trying. A bad
+    API key or a malformed request fails the same way on every model, except
+    when the problem is this model itself (missing or decommissioned).
+    """
+    if isinstance(error, (groq.AuthenticationError, groq.PermissionDeniedError)):
+        return False
+    if isinstance(error, (groq.BadRequestError, groq.NotFoundError, groq.UnprocessableEntityError)):
+        return _error_code(error) in MODEL_ERROR_CODES
+    return True
