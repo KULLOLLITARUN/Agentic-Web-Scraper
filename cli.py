@@ -129,6 +129,8 @@ async def run_scrape(
                 border_style="green",
             )
         )
+        for warning in result.get("warnings", []):
+            console.print(f"[bold yellow]⚠[/bold yellow] {warning}")
 
         # JSON output
         console.print()

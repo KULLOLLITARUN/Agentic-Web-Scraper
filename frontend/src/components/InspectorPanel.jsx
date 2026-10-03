@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Download, Search, Table2, Braces, Check, AlertCircle, MousePointerClick } from 'lucide-react';
+import { Copy, Download, Search, Table2, Braces, Check, AlertCircle, AlertTriangle, MousePointerClick } from 'lucide-react';
 import { fadeUp, motion } from '../lib/motion';
 
 const TABS = [
@@ -71,7 +71,7 @@ function Skeleton() {
   );
 }
 
-export default function InspectorPanel({ data, isLoading, error }) {
+export default function InspectorPanel({ data, isLoading, error, warnings = [] }) {
   const [activeTab, setActiveTab] = useState('table');
   const [filterText, setFilterText] = useState('');
   const [copied, setCopied] = useState(false);
@@ -278,6 +278,19 @@ export default function InspectorPanel({ data, isLoading, error }) {
       </div>
 
       <div ref={bodyRef} className="flex-1 overflow-auto p-4 sm:p-6">
+        {data && !isLoading && !error && warnings.length > 0 && (
+          <div className="mb-4 rounded-xl border border-warn/30 bg-warn/10 px-4 py-3 flex gap-2.5 text-sm">
+            <AlertTriangle size={16} className="text-warn shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <div className="font-medium">Results may be incomplete</div>
+              {warnings.map((w, i) => (
+                <p key={i} className="text-muted">
+                  {w}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
         {body}
       </div>
     </div>

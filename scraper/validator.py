@@ -27,6 +27,10 @@ class Validator:
     # Matches ```json ... ``` or ``` ... ``` (greedy, DOTALL)
     _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 
+    #: Set by :meth:`parse` — ``True`` when the last response was cut off and
+    #: had to be repaired, which means trailing items were dropped.
+    repaired: bool = False
+
     def clean_json_response(self, raw: str) -> str:
         """Strip markdown code fences from *raw* and return trimmed text.
 
@@ -87,12 +91,14 @@ class Validator:
         Raises:
             ValidationError: If the cleaned string is not valid JSON.
         """
+        self.repaired = False
         cleaned = self.clean_json_response(raw_response)
         try:
             return json.loads(cleaned)
         except json.JSONDecodeError as e:
             repaired = self.repair_truncated_json(cleaned)
             if repaired is not None:
+                self.repaired = True
                 return repaired
             raise ValidationError(
                 f"Invalid JSON: {e}. Raw response was: {raw_response[:200]}"

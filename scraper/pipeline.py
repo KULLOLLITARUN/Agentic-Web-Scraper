@@ -34,10 +34,16 @@ class ScraperPipeline:
             before giving up.  Defaults to ``3``.
     """
 
-    def __init__(self, max_retries: int = 3) -> None:
+    def __init__(
+        self,
+        max_retries: int = 3,
+        model: str | None = None,
+        api_key: str | None = None,
+        max_chars: int | None = None,
+    ) -> None:
         self.max_retries = max_retries
-        self._distiller = Distiller()
-        self._brain = Brain()
+        self._distiller = Distiller(max_chars) if max_chars else Distiller()
+        self._brain = Brain(api_key=api_key, model=model)
         self._validator = Validator()
 
     async def run(
@@ -76,6 +82,8 @@ class ScraperPipeline:
             * ``items_count`` (*int*) — number of extracted items (1 for
               non-list results).
             * ``data`` (*Any*) — the validated, parsed data.
+            * ``warnings`` (*list[str]*) — reasons the data may be incomplete
+              (page text cut off, model output cut off).
 
         Raises:
             RuntimeError: If all retry attempts are exhausted without
@@ -100,6 +108,15 @@ class ScraperPipeline:
         )
         cleaned: str = self._distiller.distill(raw_html)
         logger.info("       %d chars after distillation", len(cleaned))
+
+        warnings: list[str] = []
+        if self._distiller.truncated:
+            warnings.append(
+                f"Page text was cut off at {self._distiller.max_chars:,} of "
+                f"{self._distiller.full_length:,} characters, so items further "
+                "down the page may be missing. Raise 'Max page text' in Settings."
+            )
+            logger.warning(warnings[-1])
 
         # ── Step 3: LLM extraction with self-healing retry loop ──────────────
         logger.info("[3/5] Brain: Sending to Groq LLM")
@@ -145,8 +162,16 @@ class ScraperPipeline:
             len(validated_data) if isinstance(validated_data, list) else 1
         )
 
+        if self._validator.repaired:
+            warnings.append(
+                "The model's output hit its length limit and was cut off; the "
+                f"{items_count} complete items were kept, later ones are missing."
+            )
+            logger.warning(warnings[-1])
+
         return {
             "url": url,
             "items_count": items_count,
             "data": validated_data,
+            "warnings": warnings,
         }

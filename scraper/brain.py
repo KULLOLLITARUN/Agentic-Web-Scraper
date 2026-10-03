@@ -34,14 +34,16 @@ class Brain:
     Features automatic multi-model failover to prevent 429 Rate Limit errors.
     """
 
-    def __init__(self) -> None:
-        api_key = os.environ.get("GROQ_API_KEY")
+    def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
+        api_key = api_key or os.environ.get("GROQ_API_KEY")
         if not api_key:
             raise ValueError(
                 "GROQ_API_KEY environment variable is not set. "
                 "Please export your Groq API key before running the scraper."
             )
         self._client = Groq(api_key=api_key)
+        # A preferred model is tried first; the rest of the pool stays as failover.
+        self._models = [model] + [m for m in MODELS if m != model] if model else list(MODELS)
 
     def extract(
         self,
@@ -70,13 +72,17 @@ class Brain:
                 "Extract again and fix the issue.",
             ]
 
-        user_parts.append("\nExtract up to 15 items in a valid JSON array. Ensure every open object is completely closed.")
+        user_parts.append(
+            "\nExtract EVERY matching item on the page, in page order. "
+            "Return compact JSON on a single line with no indentation, "
+            "and make sure every open object and array is closed."
+        )
         user_prompt = "\n".join(user_parts)
 
         last_error = None
 
         # Iterate through model pool with automatic failover
-        for model_name in MODELS:
+        for model_name in self._models:
             # Scale tokens conservatively for qwen, higher for gpt-oss
             token_budget = 800 if "qwen" in model_name else 3500
 

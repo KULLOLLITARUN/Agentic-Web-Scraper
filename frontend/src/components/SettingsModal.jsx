@@ -3,10 +3,13 @@ import Modal from './Modal';
 
 const DEFAULTS = {
   apiKey: '',
-  model: 'qwen/qwen3.8-27b',
+  model: '',
   backendUrl: 'http://localhost:8000',
   maxChars: 12000,
 };
+
+// Keep in sync with MODELS in scraper/brain.py.
+const MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'];
 
 function Field({ label, hint, children }) {
   return (
@@ -30,7 +33,8 @@ export default function SettingsModal({ isOpen, onClose, config = {}, onSave }) 
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave({ ...form, maxChars: parseInt(form.maxChars, 10) || DEFAULTS.maxChars });
+    const chars = Number.parseInt(form.maxChars, 10) || DEFAULTS.maxChars;
+    onSave({ ...form, maxChars: Math.min(200000, Math.max(1000, chars)) });
     onClose();
   };
 
@@ -63,14 +67,21 @@ export default function SettingsModal({ isOpen, onClose, config = {}, onSave }) 
         <Field label="Backend URL" hint="Where the FastAPI server is running.">
           <input className="field font-mono text-[13px]" value={form.backendUrl} onChange={set('backendUrl')} />
         </Field>
-        <Field label="Model">
-          <input className="field font-mono text-[13px]" value={form.model} onChange={set('model')} />
+        <Field label="Model" hint="Tried first; the other models are used as fallbacks if it is rate-limited.">
+          <select className="field" value={form.model} onChange={set('model')}>
+            <option value="">Auto (gpt-oss-120b first)</option>
+            {[...new Set([...MODELS, form.model].filter(Boolean))].map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
         </Field>
         <Field label="API key" hint="Optional. Leave blank to use the server's .env key.">
           <input type="password" className="field" placeholder="••••••••" value={form.apiKey} onChange={set('apiKey')} />
         </Field>
-        <Field label="Max page text (characters)">
-          <input type="number" className="field" value={form.maxChars} onChange={set('maxChars')} />
+        <Field label="Max page text (characters)" hint="Page text beyond this is cut off. Higher catches more items but uses more tokens.">
+          <input type="number" min={1000} max={200000} step={1000} className="field" value={form.maxChars} onChange={set('maxChars')} />
         </Field>
       </form>
     </Modal>

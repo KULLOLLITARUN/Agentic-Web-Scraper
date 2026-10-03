@@ -7,6 +7,7 @@ import HistoryModal from './components/HistoryModal';
 import SettingsModal from './components/SettingsModal';
 
 const DEFAULT_URL = 'https://quotes.toscrape.com';
+const LEGACY_DEFAULT_MODEL = 'qwen/qwen3.8-27b';
 const DEFAULT_SCHEMA = 'Each quote: text (string), author (string), tags (list of strings)';
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
   const [errorStep, setErrorStep] = useState(null);
   const [resultData, setResultData] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [warnings, setWarnings] = useState([]);
 
   // Telemetry & metrics
   const [metrics, setMetrics] = useState({ elapsed: 0, itemsCount: 0 });
@@ -41,7 +43,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [config, setConfig] = useState({
     apiKey: '',
-    model: 'qwen/qwen3.8-27b',
+    model: '',
     backendUrl: 'http://localhost:8000',
     maxChars: 12000
   });
@@ -52,7 +54,12 @@ export default function App() {
       if (savedHistory) setHistory(JSON.parse(savedHistory));
 
       const savedConfig = localStorage.getItem('ai_scraper_config');
-      if (savedConfig) setConfig(JSON.parse(savedConfig));
+      if (savedConfig) {
+        const parsed = JSON.parse(savedConfig);
+        // The old UI saved its placeholder model as if the user chose it; treat it as "auto".
+        if (!parsed.version && parsed.model === LEGACY_DEFAULT_MODEL) parsed.model = '';
+        setConfig((prev) => ({ ...prev, ...parsed }));
+      }
     } catch (e) {
       console.error('Failed to load local storage:', e);
     }
@@ -85,6 +92,7 @@ export default function App() {
     setStatus('running');
     setResultData(null);
     setErrorMessage(null);
+    setWarnings([]);
     setErrorStep(null);
     setCurrentStep('fetch');
 
@@ -122,7 +130,10 @@ export default function App() {
           expect_list: expectList,
           scroll: scroll,
           max_scrolls: maxScrolls,
-          headless: headless
+          headless: headless,
+          model: config.model || null,
+          api_key: config.apiKey || null,
+          max_chars: config.maxChars || null
         })
       });
 
@@ -153,9 +164,12 @@ export default function App() {
       setCurrentStep('done');
       setStatus('done');
       setResultData(extractedData);
+      const runWarnings = resJson.warnings || [];
+      setWarnings(runWarnings);
       setMetrics({ elapsed, itemsCount });
 
       addLog(`Done: ${itemsCount} records in ${elapsed}s`, 'info', 'DONE');
+      runWarnings.forEach((w) => addLog(w, 'warn', 'WARNING'));
 
       // Save to history
       const newRun = {
@@ -165,7 +179,8 @@ export default function App() {
         schema,
         itemsCount,
         elapsed,
-        data: extractedData
+        data: extractedData,
+        warnings: runWarnings
       };
       const updatedHistory = [newRun, ...history.slice(0, 24)];
       setHistory(updatedHistory);
@@ -187,6 +202,7 @@ export default function App() {
     setUrl(run.url);
     setSchema(run.schema);
     setResultData(run.data);
+    setWarnings(run.warnings || []);
     setStatus('done');
     setCurrentStep('done');
     setErrorStep(null);
@@ -203,7 +219,7 @@ export default function App() {
 
   const handleSaveConfig = (newConfig) => {
     setConfig(newConfig);
-    localStorage.setItem('ai_scraper_config', JSON.stringify(newConfig));
+    localStorage.setItem('ai_scraper_config', JSON.stringify({ ...newConfig, version: 2 }));
     addLog('Settings saved.', 'info', 'SETTINGS');
   };
 
@@ -254,6 +270,7 @@ export default function App() {
               data={resultData}
               isLoading={status === 'running'}
               error={errorMessage}
+              warnings={warnings}
             />
           </div>
         </div>

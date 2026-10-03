@@ -103,6 +103,20 @@ class ScrapeRequest(BaseModel):
         default=True,
         description="If False, launches visible Chrome to bypass Akamai/Cloudflare WAFs (e.g. for Naukri).",
     )
+    model: str | None = Field(
+        default=None,
+        description="Preferred Groq model, tried before the failover pool. Defaults to the pool order.",
+    )
+    api_key: str | None = Field(
+        default=None,
+        description="Groq API key override. Defaults to GROQ_API_KEY from the server environment.",
+    )
+    max_chars: int | None = Field(
+        default=None,
+        ge=1000,
+        le=200_000,
+        description="Maximum characters of page text sent to the model. Defaults to 12,000.",
+    )
 
 
 class ScrapeResponse(BaseModel):
@@ -114,6 +128,10 @@ class ScrapeResponse(BaseModel):
     data: list | dict = Field(..., description="The extracted data payload.")
     elapsed_seconds: float = Field(..., description="Wall-clock time taken in seconds.")
     error: str | None = Field(default=None, description="Error message if the scrape failed.")
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="Reasons the data may be incomplete, e.g. page or model output was cut off.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +187,12 @@ async def scrape(request: ScrapeRequest) -> ScrapeResponse:
     start = time.time()
     try:
         target_schema = request.schema_description or request.instruction or "Extract structured data from the page"
-        pipeline = ScraperPipeline(max_retries=request.max_retries)
+        pipeline = ScraperPipeline(
+            max_retries=request.max_retries,
+            model=request.model or None,
+            api_key=request.api_key or None,
+            max_chars=request.max_chars,
+        )
         result = await pipeline.run(
             request.url,
             target_schema,
@@ -184,6 +207,7 @@ async def scrape(request: ScrapeRequest) -> ScrapeResponse:
             items_count=result["items_count"],
             data=result["data"],
             elapsed_seconds=round(time.time() - start, 2),
+            warnings=result["warnings"],
         )
     except Exception as e:
         logger.error("Scrape failed for %s: %s", request.url, e, exc_info=True)
