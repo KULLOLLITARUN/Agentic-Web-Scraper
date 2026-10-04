@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Copy, Download, FileJson } from 'lucide-react';
+import { Check, Copy, Download, FileJson, FileSpreadsheet } from 'lucide-react';
 import { fadeUp, motion } from '../lib/motion';
-import { columnsOf, downloadCsv, downloadJson, fillRate, toRows } from '../lib/export';
+import { columnsOf, downloadCsv, downloadJson, downloadXlsx, fillRate, toRows } from '../lib/export';
 import { groupNotes } from '../lib/notes';
 import { nextSort, view as viewRows } from '../lib/view';
 import { STEPS } from '../lib/useScrape';
@@ -220,7 +220,8 @@ function Results({ state, onRerun, onOpenSettings, focus, onFocus, onPick }) {
   };
   const actions = (
     <>
-      <button onClick={() => downloadCsv(data)} className="btn-primary"><Download size={15} /> Export CSV</button>
+      <button onClick={() => downloadCsv(data)} className="btn-primary"><Download size={15} /> <span><span className="hidden sm:inline">Export </span>CSV</span></button>
+      <button onClick={() => downloadXlsx(data)} className="btn-outline"><FileSpreadsheet size={15} /> Excel</button>
       <button onClick={() => downloadJson(data)} className="btn-outline"><FileJson size={15} /> JSON</button>
       <button onClick={copy} className="btn-outline">{copied ? <Check size={15} className="text-ok" /> : <Copy size={15} />} {copied ? 'Copied' : 'Copy'}</button>
     </>
@@ -333,12 +334,25 @@ function Results({ state, onRerun, onOpenSettings, focus, onFocus, onPick }) {
   );
 }
 
-export default function FoundPanel({ state, onRerun, onOpenSettings, onPickExample, onRetry, onEdit, focus = null, onFocus = () => {}, onPick = () => {} }) {
+export default function FoundPanel({ state, onRerun, onOpenSettings, onPickExample, onRetry, onEdit, focus = null, onFocus = () => {}, onPick = () => {}, saved = [], onRunSaved = () => {} }) {
   const { status, total, error } = state;
 
   if (status === 'idle' && !state.result) {
     return (
       <div className="border-[1.5px] border-dashed border-line2 rounded-md p-5 md:p-7 text-center">
+        {saved.length > 0 && (
+          <>
+            <div className="font-serif text-[28px] md:text-[34px] leading-tight mb-4">Your saved requests</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left mb-7">
+              {saved.slice(0, 6).map((s) => (
+                <button key={s.id} onClick={() => onRunSaved(s)} className="text-left bg-surface border border-fg/60 rounded px-3 py-2.5 hover:border-fg transition-colors">
+                  <span className="block font-semibold text-sm leading-snug">{s.what || 'typed fields'}</span>
+                  <span className="font-mono text-[11px] text-faint">{s.url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]} · run ▸</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         <div className="font-serif text-[28px] md:text-[34px] leading-tight mb-4">Or start from one of these</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
           {PRESETS.map((p) => (

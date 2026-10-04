@@ -44,6 +44,7 @@ export default function App() {
   const [flash, setFlash] = useState({ i: null, n: 0 }); // a record clicked in the results: its mark blinks
   const [config, setConfig] = useState({ apiKey: '', model: '', backendUrl: 'http://localhost:8001', maxChars: 40000 });
   const [history, setHistory] = useState([]);
+  const [saved, setSaved] = useState([]); // requests kept to run again: { id, url, what, fields, useFields, options }
   const [runCount, setRunCount] = useState(0); // every run ever started here, for 'No. 0042'
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -54,6 +55,8 @@ export default function App() {
     document.title = appTitle();
     const savedHistory = loadJson('ai_scraper_history');
     if (Array.isArray(savedHistory)) setHistory(savedHistory);
+    const savedRequests = loadJson('ai_scraper_saved');
+    if (Array.isArray(savedRequests)) setSaved(savedRequests);
     // History keeps only the last 25 runs, so the run number has its own counter.
     setRunCount(Number(loadJson('ai_scraper_run_count')) || (Array.isArray(savedHistory) ? savedHistory.length : 0));
     const saved = loadJson('ai_scraper_config');
@@ -89,23 +92,26 @@ export default function App() {
 
   const request = buildRequest(what, fields, useFields);
 
-  const run = () => {
-    if (!url.trim() || !request) return;
-    const target = withScheme(url);
+  // A saved request runs with its own values; the form shows them too.
+  const run = (from = null) => {
+    const src = from || { url, what, fields, useFields, options };
+    const schema = buildRequest(src.what, src.fields, src.useFields);
+    if (!src.url.trim() || !schema) return;
+    const target = withScheme(src.url);
     setRunCount((n) => {
       saveJson('ai_scraper_run_count', n + 1);
       return n + 1;
     });
-    const snapshot = { what, fields, useFields };
+    const snapshot = { what: src.what, fields: src.fields, useFields: src.useFields };
     scrape.run(
-      { url: target, schema: request, ...options, backendUrl: config.backendUrl, model: config.model, apiKey: config.apiKey, maxChars: config.maxChars },
+      { url: target, schema, ...src.options, backendUrl: config.backendUrl, model: config.model, apiKey: config.apiKey, maxChars: config.maxChars },
       {
         onDone: (result) => {
           const entry = {
             id: Date.now(),
             timestamp: new Date().toLocaleString(),
             url: target,
-            schema: request,
+            schema,
             ...snapshot,
             itemsCount: result.items,
             pagesScraped: result.pages,
@@ -121,6 +127,32 @@ export default function App() {
         },
       }
     );
+  };
+
+  const sameRequest = (a, b) => withScheme(a.url) === withScheme(b.url) && buildRequest(a.what, a.fields, a.useFields) === buildRequest(b.what, b.fields, b.useFields);
+  /** Keep the form's request to run again; 'exists' when it's already kept. */
+  const saveRequest = () => {
+    const entry = { id: Date.now(), url: withScheme(url), what, fields, useFields, options };
+    if (saved.some((s) => sameRequest(s, entry))) return 'exists';
+    const next = [entry, ...saved].slice(0, 50);
+    setSaved(next);
+    saveJson('ai_scraper_saved', next);
+    return 'saved';
+  };
+  const deleteSaved = (id) => {
+    const next = saved.filter((s) => s.id !== id);
+    setSaved(next);
+    saveJson('ai_scraper_saved', next);
+  };
+  const loadSaved = (entry, andRun = false) => {
+    setUrl(hostOf(entry.url));
+    setWhat(entry.what);
+    setFields(entry.fields);
+    setUseFields(entry.useFields);
+    setOptions((o) => ({ ...o, ...entry.options }));
+    setIsHistoryOpen(false);
+    if (andRun) run({ ...entry, options: { ...options, ...entry.options } });
+    else requestAnimationFrame(() => document.querySelector('[aria-label="What to extract"]')?.focus());
   };
 
   const pickExample = (p) => {
@@ -178,8 +210,9 @@ export default function App() {
         options={options}
         setOption={(key, value) => setOptions((o) => ({ ...o, [key]: value }))}
         running={state.status === 'running'}
-        onRun={run}
+        onRun={() => run()}
         onStop={scrape.cancel}
+        onSave={saveRequest}
       />
 
       {showPanes && (
@@ -209,10 +242,12 @@ export default function App() {
           </div>
           <FoundPanel
             state={state}
-            onRerun={run}
+            onRerun={() => run()}
             onOpenSettings={() => setIsSettingsOpen(true)}
             onPickExample={pickExample}
-            onRetry={run}
+            onRetry={() => run()}
+            saved={saved}
+            onRunSaved={(entry) => loadSaved(entry, true)}
             onEdit={() => document.querySelector('[aria-label="What to extract"]')?.focus()}
             focus={focus}
             onFocus={setFocus}
@@ -226,6 +261,10 @@ export default function App() {
         onClose={() => setIsHistoryOpen(false)}
         history={history}
         onSelectRun={openRun}
+        saved={saved}
+        onRunSaved={(entry) => loadSaved(entry, true)}
+        onEditSaved={(entry) => loadSaved(entry)}
+        onDeleteSaved={deleteSaved}
         onClearHistory={() => {
           setHistory([]);
           try {

@@ -64,8 +64,14 @@ function Toggle({ checked, onChange, label }) {
   );
 }
 
-export default function Composer({ url, setUrl, what, setWhat, fields, setFields, useFields, setUseFields, options, setOption, running, onRun, onStop }) {
+export default function Composer({ url, setUrl, what, setWhat, fields, setFields, useFields, setUseFields, options, setOption, running, onRun, onStop, onSave = () => 'saved' }) {
   const [advanced, setAdvanced] = useState(false);
+  const [saveNote, setSaveNote] = useState(null); // 'saved' | 'exists', shown for a moment
+  useEffect(() => {
+    if (!saveNote) return undefined;
+    const t = setTimeout(() => setSaveNote(null), 1800);
+    return () => clearTimeout(t);
+  }, [saveNote]);
   const canRun = url.trim() && (what.trim() || (useFields && fields.some((f) => f.name.trim())));
   const blank = 'min-w-0 border-0 border-b-2 border-fg bg-transparent outline-none px-0.5 pb-0.5 rounded-none focus:border-pencil disabled:border-dashed disabled:text-muted';
 
@@ -130,6 +136,11 @@ export default function Composer({ url, setUrl, what, setWhat, fields, setFields
           className="text-[13px] underline underline-offset-[3px] decoration-faint hover:decoration-fg">
           advanced
         </button>
+        <button type="button" onClick={() => setSaveNote(onSave())} disabled={!canRun}
+          className="text-[13px] underline underline-offset-[3px] decoration-faint hover:decoration-fg disabled:opacity-40 disabled:no-underline">
+          save request
+        </button>
+        {saveNote && <span role="status" className="text-[13px] text-muted">{saveNote === 'saved' ? 'saved ✓ (find it under Runs)' : 'already saved'}</span>}
         {running ? (
           <button onClick={onStop} className="order-last md:order-none w-full md:w-auto md:ml-auto h-12 md:h-11 px-6 rounded-lg border-[1.5px] border-pencil text-pencil font-semibold">
             Stop
