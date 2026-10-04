@@ -1,0 +1,544 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Markpull — how a scrape runs",
+    "output": "docs/architecture.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/KULLOLLITARUN/Agentic-Web-Scraper.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "10cdac22366da5327b12a3700450a69da7a0f61c"
+    }
+  },
+  "components": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "You",
+      "sublabel": "URL + what to get",
+      "pos": [
+        40,
+        170
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "storage",
+      "type": "database",
+      "label": "Browser storage",
+      "sublabel": "history · saved requests",
+      "pos": [
+        300,
+        40
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "frontend/src/App.jsx",
+          "line": 14,
+          "end_line": 28,
+          "label": "localStorage helpers"
+        }
+      ]
+    },
+    {
+      "id": "composer",
+      "type": "frontend",
+      "label": "App + Composer",
+      "sublabel": "React · port 5173",
+      "pos": [
+        300,
+        170
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "frontend/src/App.jsx",
+          "line": 34,
+          "label": "App state"
+        },
+        {
+          "path": "frontend/src/components/Composer.jsx",
+          "line": 67,
+          "label": "sentence form"
+        }
+      ]
+    },
+    {
+      "id": "usescrape",
+      "type": "frontend",
+      "label": "useScrape",
+      "sublabel": "stream reducer",
+      "pos": [
+        560,
+        170
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "frontend/src/lib/useScrape.js",
+          "line": 155,
+          "end_line": 210,
+          "label": "fetch + read NDJSON"
+        },
+        {
+          "path": "frontend/src/lib/useScrape.js",
+          "line": 47,
+          "label": "event reducer"
+        }
+      ]
+    },
+    {
+      "id": "panels",
+      "type": "frontend",
+      "label": "Page + Found panels",
+      "sublabel": "marks · results · export",
+      "pos": [
+        820,
+        170
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "frontend/src/components/PagePanel.jsx",
+          "line": 82,
+          "label": "screenshot + marks"
+        },
+        {
+          "path": "frontend/src/components/FoundPanel.jsx",
+          "line": 337,
+          "label": "results, filter, export"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "FastAPI",
+      "sublabel": "/scrape/stream :8001",
+      "pos": [
+        560,
+        330
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "api/main.py",
+          "line": 259,
+          "end_line": 325,
+          "label": "streaming endpoint"
+        },
+        {
+          "path": "api/main.py",
+          "line": 45,
+          "label": "public_error"
+        }
+      ]
+    },
+    {
+      "id": "pipeline",
+      "type": "backend",
+      "label": "pipeline.py",
+      "sublabel": "per page · next links",
+      "pos": [
+        40,
+        330
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "scraper/pipeline.py",
+          "line": 77,
+          "label": "run: pages loop"
+        },
+        {
+          "path": "scraper/pipeline.py",
+          "line": 215,
+          "label": "_scrape_page"
+        }
+      ]
+    },
+    {
+      "id": "navigator",
+      "type": "backend",
+      "label": "Navigator",
+      "sublabel": "Chromium · Load more",
+      "pos": [
+        40,
+        520
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "scraper/navigator.py",
+          "line": 380,
+          "label": "fetch"
+        },
+        {
+          "path": "scraper/navigator.py",
+          "line": 309,
+          "label": "_load_more"
+        },
+        {
+          "path": "scraper/navigator.py",
+          "line": 345,
+          "label": "_screenshot + layout"
+        }
+      ]
+    },
+    {
+      "id": "distiller",
+      "type": "backend",
+      "label": "Distiller",
+      "sublabel": "HTML to plain text",
+      "pos": [
+        270,
+        520
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "scraper/distiller.py",
+          "line": 72,
+          "label": "distill"
+        }
+      ]
+    },
+    {
+      "id": "chunking",
+      "type": "backend",
+      "label": "Chunking",
+      "sublabel": "parts · merge · rest",
+      "pos": [
+        500,
+        520
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "scraper/chunking.py",
+          "line": 28,
+          "label": "split_text"
+        },
+        {
+          "path": "scraper/chunking.py",
+          "line": 120,
+          "label": "rest_after"
+        },
+        {
+          "path": "scraper/pipeline.py",
+          "line": 317,
+          "label": "_read_rest"
+        }
+      ]
+    },
+    {
+      "id": "brain",
+      "type": "backend",
+      "label": "Brain",
+      "sublabel": "model pool · budgets",
+      "pos": [
+        730,
+        520
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "scraper/brain.py",
+          "line": 75,
+          "label": "extract + failover"
+        },
+        {
+          "path": "scraper/brain.py",
+          "line": 205,
+          "label": "token budget"
+        }
+      ]
+    },
+    {
+      "id": "validator",
+      "type": "backend",
+      "label": "Validator",
+      "sublabel": "repair · type checks",
+      "pos": [
+        960,
+        520
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "scraper/validator.py",
+          "line": 335,
+          "label": "run_all"
+        },
+        {
+          "path": "scraper/pipeline.py",
+          "line": 388,
+          "label": "retry loop"
+        }
+      ]
+    },
+    {
+      "id": "locate",
+      "type": "backend",
+      "label": "Locate",
+      "sublabel": "marks + open links",
+      "pos": [
+        1190,
+        520
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "scraper/locate.py",
+          "line": 132,
+          "label": "locate_records"
+        },
+        {
+          "path": "scraper/locate.py",
+          "line": 187,
+          "label": "_item_link"
+        }
+      ]
+    },
+    {
+      "id": "website",
+      "type": "external",
+      "label": "Target website",
+      "sublabel": "any page",
+      "pos": [
+        40,
+        690
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "groq",
+      "type": "cloud",
+      "label": "LLM provider",
+      "sublabel": "Groq today",
+      "pos": [
+        730,
+        690
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "scraper/brain.py",
+          "line": 27,
+          "label": "MODELS pool"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Browser app (React + Vite)",
+      "wraps": [
+        "storage",
+        "composer",
+        "usescrape",
+        "panels"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Backend (Python)",
+      "wraps": [
+        "api",
+        "pipeline",
+        "navigator",
+        "distiller",
+        "chunking",
+        "brain",
+        "validator",
+        "locate"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "user-request",
+      "from": "user",
+      "to": "composer",
+      "label": "request",
+      "variant": "emphasis"
+    },
+    {
+      "id": "save-history",
+      "from": "composer",
+      "to": "storage",
+      "label": "save",
+      "variant": "dashed"
+    },
+    {
+      "id": "start-run",
+      "from": "composer",
+      "to": "usescrape",
+      "label": "run()",
+      "variant": "emphasis"
+    },
+    {
+      "id": "render-state",
+      "from": "usescrape",
+      "to": "panels",
+      "label": "state"
+    },
+    {
+      "id": "stream",
+      "from": "usescrape",
+      "to": "api",
+      "label": "POST + NDJSON events",
+      "variant": "emphasis"
+    },
+    {
+      "id": "run-pipeline",
+      "from": "api",
+      "to": "pipeline",
+      "label": "run(on_event)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "fetch-page",
+      "from": "pipeline",
+      "to": "navigator",
+      "label": "each page",
+      "variant": "emphasis"
+    },
+    {
+      "id": "browse",
+      "from": "navigator",
+      "to": "website",
+      "label": "load · scroll · click"
+    },
+    {
+      "id": "html",
+      "from": "navigator",
+      "to": "distiller",
+      "label": "HTML"
+    },
+    {
+      "id": "text",
+      "from": "distiller",
+      "to": "chunking",
+      "label": "text"
+    },
+    {
+      "id": "parts",
+      "from": "chunking",
+      "to": "brain",
+      "label": "parts"
+    },
+    {
+      "id": "llm-call",
+      "from": "brain",
+      "to": "groq",
+      "label": "chat completion"
+    },
+    {
+      "id": "json",
+      "from": "brain",
+      "to": "validator",
+      "label": "JSON"
+    },
+    {
+      "id": "retry",
+      "from": "validator",
+      "to": "brain",
+      "label": "retry + errors",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "top"
+    },
+    {
+      "id": "records",
+      "from": "validator",
+      "to": "locate",
+      "label": "records"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "Mark",
+      "items": [
+        "Locate matches each record to a repeated block (3+ same-width siblings) in the screenshot layout",
+        "That block gives the highlight box and the item's own link (open ↗); unsure means no box"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Pull",
+      "items": [
+        "Long pages are read in overlapping parts and merged",
+        "If the model stops early, the rest of the page is read again",
+        "Typed fields are checked; problems go back to the model (3 attempts)"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Live stream",
+      "items": [
+        "pipeline emits step, part_done, loaded_more, screenshot, highlights, warning, result",
+        "api/main.py streams them as NDJSON; useScrape folds them into screen state"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Limits",
+      "items": [
+        "Short rate limits are waited out; the daily quota falls back to a smaller model",
+        "Model and provider names are kept out of the UI"
+      ]
+    }
+  ]
+}

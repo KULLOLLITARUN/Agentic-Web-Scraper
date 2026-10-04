@@ -55,6 +55,12 @@ It works on any kind of list: products, stories, quotes, listings, tables, searc
 
 ## How it works
 
+![Markpull architecture: the React app streams a run from the FastAPI backend, which reads each page through Navigator, Distiller, Chunking, Brain, Validator and Locate](docs/architecture.svg)
+
+For an interactive version (click a box to see its source lines, trace paths, export), download [`docs/architecture.html`](docs/architecture.html) and open it in a browser. It's generated with [Archify](https://github.com/tt-a1i/archify) from [`docs/architecture.json`](docs/architecture.json); a PNG copy is in [`docs/architecture.png`](docs/architecture.png).
+
+Step by step:
+
 ```
  URL + "what to get"
         │
