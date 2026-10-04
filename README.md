@@ -8,7 +8,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat&logo=fastapi&logoColor=white)
 ![Playwright](https://img.shields.io/badge/Playwright-Chromium-2EAD33?style=flat&logo=playwright&logoColor=white)
 ![React](https://img.shields.io/badge/React-18-61DAFB?style=flat&logo=react&logoColor=black)
-![Tests](https://img.shields.io/badge/tests-170%20passing-2EAD33?style=flat)
+[![Tests](https://github.com/KULLOLLITARUN/Agentic-Web-Scraper/actions/workflows/tests.yml/badge.svg)](https://github.com/KULLOLLITARUN/Agentic-Web-Scraper/actions/workflows/tests.yml)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat)
 
 [The name](#the-name) •
