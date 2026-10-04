@@ -87,3 +87,45 @@ def test_cookie_bar_is_hidden_for_the_screenshot():
 
     hidden, bar, header = asyncio.run(run())
     assert (hidden, bar, header) == (1, "hidden", "visible")
+
+
+GROWING_LIST = """
+<ul id="list"><li>Item 1</li></ul>
+<button id="more" onclick="
+  const list = document.getElementById('list');
+  list.insertAdjacentHTML('beforeend', '<li>Item ' + (list.children.length + 1) + '</li>');
+  if (list.children.length >= 3) this.remove();
+">Load more</button>
+"""
+
+
+async def presses_on(html, max_clicks=5, monkeypatch=None):
+    if monkeypatch:
+        import scraper.navigator as nav_module
+        monkeypatch.setattr(nav_module, "LOAD_MORE_WAIT_MS", 0)
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content(html)
+        presses = await Navigator()._load_more(page, max_clicks)
+        items = await page.evaluate("document.querySelectorAll('li').length")
+        await browser.close()
+        return presses, items
+
+
+def test_presses_load_more_until_the_button_goes(monkeypatch):
+    assert asyncio.run(presses_on(GROWING_LIST, monkeypatch=monkeypatch)) == (2, 3)
+
+
+def test_load_more_stops_at_the_limit(monkeypatch):
+    assert asyncio.run(presses_on(GROWING_LIST, max_clicks=1, monkeypatch=monkeypatch)) == (1, 2)
+
+
+def test_view_more_and_next_page_links_are_not_pressed(monkeypatch):
+    html = (
+        "<ul><li>Item 1</li></ul>"
+        "<button onclick=\"document.body.insertAdjacentHTML('beforeend', '<li>x</li>')\">View more</button>"
+        "<a href='/page/2'>Load more</a>"
+    )
+    assert asyncio.run(presses_on(html, monkeypatch=monkeypatch)) == (0, 1)
+

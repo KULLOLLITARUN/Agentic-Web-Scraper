@@ -38,7 +38,7 @@ export default function App() {
   const [what, setWhat] = useState(first.what);
   const [fields, setFields] = useState(() => fieldsOf(first.schema));
   const [useFields, setUseFields] = useState(false);
-  const [options, setOptions] = useState({ retries: 3, expectList: true, scroll: true, maxScrolls: 5, maxPages: 1, headless: true });
+  const [options, setOptions] = useState({ retries: 3, expectList: true, scroll: true, maxScrolls: 5, loadMore: 3, maxPages: 1, headless: true });
   const [pane, setPane] = useState('found'); // phones: which panel is showing
   const [focus, setFocus] = useState(null); // record shown on both the page and in the results
   const [flash, setFlash] = useState({ i: null, n: 0 }); // a record clicked in the results: its mark blinks

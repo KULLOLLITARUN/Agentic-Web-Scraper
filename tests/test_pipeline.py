@@ -459,3 +459,21 @@ def test_complete_page_is_read_once(monkeypatch):
     result, calls = run_jobs(monkeypatch, [json.dumps(jobs)])
 
     assert len(calls) == 1 and result["items_count"] == 8
+
+
+def test_load_more_presses_are_passed_on_and_reported(monkeypatch):
+    seen = {}
+
+    async def fetch(self, url, load_more=0, **_):
+        seen["load_more"] = load_more
+        self.load_more_presses = 2
+        return PAGE
+
+    monkeypatch.setattr(FakeNavigator, "fetch", fetch)
+    p = ScraperPipeline(api_key="test-key")
+    p._brain = FakeBrain(['[{"name": "Item one"}]'])
+    events = []
+    asyncio.run(p.run("https://example.com", "name (string)", load_more=4, on_event=events.append))
+
+    assert seen["load_more"] == 4
+    assert {"type": "loaded_more", "page": 1, "presses": 2} in events

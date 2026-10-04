@@ -189,7 +189,7 @@ export default function Composer({ url, setUrl, what, setWhat, fields, setFields
       )}
 
       {advanced && (
-        <div className="mt-3.5 grid sm:grid-cols-2 lg:grid-cols-4 gap-3 max-w-5xl">
+        <div className="mt-3.5 grid sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-5xl">
           <div className="flex items-center justify-between gap-3 bg-surface border border-line rounded-md px-3 py-2">
             <span className="text-[13px]">Retry attempts</span>
             <select value={options.retries} onChange={(e) => setOption('retries', Number(e.target.value))} className="bg-transparent font-mono text-[13px] outline-none">
@@ -205,6 +205,12 @@ export default function Composer({ url, setUrl, what, setWhat, fields, setFields
             <input type="range" min={1} max={20} value={options.maxScrolls} disabled={!options.scroll} onChange={(e) => setOption('maxScrolls', Number(e.target.value))}
               aria-label="Scrolls" className="w-24 accent-[rgb(var(--fg))]" />
             <span className="font-mono text-xs w-5 text-right">{options.maxScrolls}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3 bg-surface border border-line rounded-md px-3 py-2">
+            <span className="text-[13px]" title="Lists that grow in place: press their 'Load more' / 'Show more' button">Press “Load more”</span>
+            <input type="range" min={0} max={10} value={options.loadMore} onChange={(e) => setOption('loadMore', Number(e.target.value))}
+              aria-label="Press Load more" className="w-24 accent-[rgb(var(--fg))]" />
+            <span className="font-mono text-xs w-9 text-right">{options.loadMore ? `${options.loadMore}×` : 'off'}</span>
           </div>
           <div className="flex items-center justify-between gap-3 bg-surface border border-line rounded-md px-3 py-2">
             <span className="text-[13px]">Show browser window</span>

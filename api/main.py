@@ -136,6 +136,12 @@ class ScrapeRequest(BaseModel):
         le=20,
         description="Maximum number of scroll steps for dynamic/lazy-loaded content.",
     )
+    load_more: int = Field(
+        default=3,
+        ge=0,
+        le=10,
+        description="Press a 'Load more' / 'Show more' button up to this many times (0 = never).",
+    )
     headless: bool = Field(
         default=True,
         description="If False, launches visible Chrome to bypass Akamai/Cloudflare WAFs (e.g. for Naukri).",
@@ -326,6 +332,7 @@ async def _run_scrape(pipeline: ScraperPipeline, request: ScrapeRequest, start: 
         request.expect_list,
         scroll=request.scroll,
         max_scrolls=request.max_scrolls,
+        load_more=request.load_more,
         headless=request.headless,
         on_event=on_event,
         max_pages=request.max_pages,

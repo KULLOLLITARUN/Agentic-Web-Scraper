@@ -73,6 +73,9 @@ function reducer(state, action) {
         }
         return next;
       }
+      if (e.type === 'loaded_more') {
+        return { ...state, logs: log(state, 'fetch', `Pressed “Load more” ${e.presses} ${e.presses === 1 ? 'time' : 'times'} on page ${e.page}`) };
+      }
       if (e.type === 'highlights') {
         return { ...state, marks: { ...state.marks, [e.page]: e.boxes } };
       }
@@ -176,6 +179,7 @@ export function useScrape() {
           expect_list: params.expectList,
           scroll: params.scroll,
           max_scrolls: params.maxScrolls,
+          load_more: params.loadMore ?? 3,
           max_pages: maxPages,
           headless: params.headless,
           model: params.model || null,

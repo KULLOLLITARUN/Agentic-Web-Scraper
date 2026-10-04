@@ -81,6 +81,7 @@ class ScraperPipeline:
         expect_list: bool = True,
         scroll: bool = True,
         max_scrolls: int = 5,
+        load_more: int = 0,
         headless: bool = True,
         on_event: Callable[[dict[str, Any]], None] | None = None,
         max_pages: int = 1,
@@ -154,7 +155,7 @@ class ScraperPipeline:
                     usual = min(page_counts) if page_counts and min(page_counts) >= SHORT_PAGE_MIN else None
                     data, raw_html, page_warnings = await self._scrape_page(
                         nav, page_url, page, max_pages, schema_description,
-                        expect_list, scroll, max_scrolls, usual=usual,
+                        expect_list, scroll, max_scrolls, usual=usual, load_more=load_more,
                     )
                 except Exception as e:
                     if page == 1:
@@ -222,6 +223,7 @@ class ScraperPipeline:
         scroll: bool,
         max_scrolls: int,
         usual: int | None = None,
+        load_more: int = 0,
     ) -> tuple[Any, str, list[str]]:
         """Fetch, distil and extract one page. Returns ``(data, raw_html, warnings)``.
 
@@ -238,7 +240,12 @@ class ScraperPipeline:
             scroll,
             max_scrolls,
         )
-        raw_html: str = await nav.fetch(url, scroll=scroll, max_scrolls=max_scrolls, screenshot=self._screenshots)
+        raw_html: str = await nav.fetch(
+            url, scroll=scroll, max_scrolls=max_scrolls, screenshot=self._screenshots, load_more=load_more
+        )
+        presses = getattr(nav, "load_more_presses", 0)
+        if presses:
+            self._emit("loaded_more", page=page, presses=presses)
         shot = getattr(nav, "last_screenshot", None) if self._screenshots else None
         self._layout = shot.get("layout") if shot else None
         if shot:

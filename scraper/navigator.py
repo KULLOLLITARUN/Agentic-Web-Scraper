@@ -96,6 +96,45 @@ COOKIE_LABEL_RE = re.compile(
 SETTLE_MS_AFTER_IDLE = 500
 SETTLE_MS_STILL_BUSY = 3500
 
+# "Load more" buttons: lists that grow in place instead of linking to page 2.
+# Whole-label match; bare "More" and "View more" are left out (on HN "More"
+# is the next-page link, on Naukri "View More" expands a filter list).
+LOAD_MORE_RE = (
+    r"^\s*(load|show|see)\s+more(\s+(results|items|products|posts|stories|articles|jobs|listings|reviews|comments))?"
+    r"\s*[.…]*\s*$|^\s*more\s+results\s*$"
+)
+# Finds the lowest visible "Load more" control that stays on this page (a
+# button, or a link to "#"/javascript), and tags it for the click.
+LOAD_MORE_JS = r"""
+(pattern) => {
+  const re = new RegExp(pattern, 'i');
+  document.querySelectorAll('[data-ws-more]').forEach((el) => el.removeAttribute('data-ws-more'));
+  let best = null;
+  for (const el of document.querySelectorAll('button, a, [role=button], input[type=button], input[type=submit]')) {
+    const label = (el.innerText || el.value || el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
+    if (!label || label.length > 40 || !re.test(label) || el.disabled) continue;
+    if (el.tagName === 'A') {
+      const href = (el.getAttribute('href') || '').trim();
+      if (href && !href.startsWith('#') && !/^javascript:/i.test(href)) continue;  // a next-page link
+    }
+    const b = el.getBoundingClientRect();
+    if (b.width < 1 || b.height < 1 || getComputedStyle(el).visibility === 'hidden') continue;
+    if (!best || b.top + scrollY > best.y) best = {el, y: b.top + scrollY};
+  }
+  if (!best) return null;
+  best.el.setAttribute('data-ws-more', '1');
+  return (best.el.innerText || best.el.value || '').trim().slice(0, 40);
+}
+"""
+# Page text without the button's own label: a last press can remove the
+# button, which must not hide the items it added.
+TEXT_LENGTH_JS = (
+    "document.body.innerText.length"
+    " - ((document.querySelector('[data-ws-more]') || {}).innerText || '').length"
+)
+# Wait after a "Load more" click for new items to arrive.
+LOAD_MORE_WAIT_MS = 1500
+
 # Page screenshots for the UI: enough of the page for a whole results list
 # (Naukri's 20 jobs: 6,632 px, 427 KB) without an endless feed (20,000+ px).
 SCREENSHOT_MAX_HEIGHT = 8000
@@ -193,6 +232,7 @@ class Navigator:
         self._browser: Browser | None = None
         #: Set by :meth:`fetch` when ``screenshot=True``; see :meth:`_screenshot`.
         self.last_screenshot: dict | None = None
+        self.load_more_presses = 0
 
     async def __aenter__(self) -> "Navigator":
         """Start the Playwright engine and launch Chromium with stealth settings."""
@@ -266,6 +306,42 @@ class Navigator:
         except Exception:
             pass
 
+    async def _load_more(self, page: Page, max_clicks: int) -> int:
+        """Press the page's "Load more" button up to *max_clicks* times; returns the presses that added content.
+
+        Stops when there's no such button, the page didn't grow after a
+        press, or the press took the browser to another page.
+        """
+        url = page.url
+        presses = 0
+        for _ in range(max_clicks):
+            try:
+                label = await page.evaluate(LOAD_MORE_JS, LOAD_MORE_RE)
+                if not label:
+                    break
+                before = await page.evaluate(TEXT_LENGTH_JS)
+                await page.locator("[data-ws-more]").first.click(timeout=3000)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=4000)
+                except Exception:
+                    pass
+                await page.wait_for_timeout(LOAD_MORE_WAIT_MS)
+                if page.url.split("#")[0] != url.split("#")[0]:
+                    logger.info("'%s' opened another page; going back.", label)
+                    await page.go_back(wait_until="domcontentloaded")
+                    break
+                after = await page.evaluate(TEXT_LENGTH_JS)
+                if after <= before:
+                    break
+                presses += 1
+                logger.info("Pressed '%s' (%d): page text %d -> %d chars", label, presses, before, after)
+                # New items can lazy-load their images too.
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            except Exception as e:
+                logger.debug("Load more stopped: %s", e)
+                break
+        return presses
+
     async def _screenshot(self, page: Page) -> dict | None:
         """JPEG of the page's top (up to SCREENSHOT_MAX_HEIGHT px), or None if it fails.
 
@@ -309,6 +385,7 @@ class Navigator:
         scroll_delay_ms: int = 800,
         timeout_ms: int = 30_000,
         screenshot: bool = False,
+        load_more: int = 0,
     ) -> str:
         """Fetch a URL and return the full rendered DOM HTML with stealth and dynamic scrolling.
 
@@ -329,6 +406,8 @@ class Navigator:
             timeout_ms: Maximum navigation timeout in milliseconds (default 30,000).
             screenshot: Also capture the top of the rendered page as a JPEG
                 into :attr:`last_screenshot` (for showing it in the UI).
+            load_more: Press a "Load more" / "Show more" button up to this
+                many times, for lists that grow in place (0 = never).
 
         Returns:
             The rendered HTML content as a string.
@@ -379,6 +458,9 @@ class Navigator:
                 await self._scroll_page(page, steps=max_scrolls, delay_ms=scroll_delay_ms)
                 # Some banners (Naukri's) only appear after a few seconds or on scroll.
                 await self._dismiss_cookie_banner(page)
+
+            #: Presses of a "Load more" button that added content (see :meth:`_load_more`).
+            self.load_more_presses = await self._load_more(page, load_more) if load_more > 0 else 0
 
             html: str = await page.content()
             self.last_screenshot = await self._screenshot(page) if screenshot else None
