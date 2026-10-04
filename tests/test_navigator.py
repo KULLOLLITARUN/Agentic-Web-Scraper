@@ -66,3 +66,24 @@ def test_screenshot_is_a_jpeg_of_the_page_top():
     assert shot["jpeg"][:2] == b"\xff\xd8"  # JPEG magic number
     assert shot["width"] == 800
     assert shot["height"] == SCREENSHOT_MAX_HEIGHT
+
+
+def test_cookie_bar_is_hidden_for_the_screenshot():
+    from scraper.navigator import HIDE_BANNERS_JS
+
+    async def run():
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+            await page.set_content(
+                '<header style="position:sticky;top:0">Shop</header><main>Products</main>'
+                '<div id="bar" style="position:fixed;bottom:0;height:60px">We use cookies. <button>Got it</button></div>'
+            )
+            hidden = await page.evaluate(HIDE_BANNERS_JS)
+            bar = await page.evaluate("getComputedStyle(document.getElementById('bar')).visibility")
+            header = await page.evaluate("getComputedStyle(document.querySelector('header')).visibility")
+            await browser.close()
+            return hidden, bar, header
+
+    hidden, bar, header = asyncio.run(run())
+    assert (hidden, bar, header) == (1, "hidden", "visible")

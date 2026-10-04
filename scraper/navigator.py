@@ -105,6 +105,26 @@ SCREENSHOT_QUALITY = 55
 # screenshot: every element (box + parent) that holds visible text, and
 # that text, including title/alt/aria-label (Books to Scrape keeps full
 # titles there). Only the screenshot's area, so the result stays small.
+# Cookie/consent bars pinned to the screen cover the screenshot (Naukri's can
+# appear after every dismissal attempt). Hidden only for the picture: the
+# page text has already been read.
+HIDE_BANNERS_JS = r"""
+() => {
+  let hidden = 0;
+  for (const el of document.querySelectorAll('body *')) {
+    const style = getComputedStyle(el);
+    if (style.position !== 'fixed' && style.position !== 'sticky') continue;
+    const r = el.getBoundingClientRect();
+    if (r.height > innerHeight * 0.6 || r.height < 1) continue;
+    if (/cookie|consent|gdpr|privacy policy/i.test(el.textContent || '')) {
+      el.style.setProperty('visibility', 'hidden', 'important');
+      hidden += 1;
+    }
+  }
+  return hidden;
+}
+"""
+
 LAYOUT_JS = r"""
 (maxH) => {
   const els = [], texts = [], ids = new Map();
@@ -247,6 +267,11 @@ class Navigator:
         """
         try:
             await page.evaluate("window.scrollTo(0, 0)")
+            try:
+                if await page.evaluate(HIDE_BANNERS_JS):
+                    logger.debug("Hid a cookie banner for the screenshot")
+            except Exception:
+                pass
             size = await page.evaluate(
                 "({w: document.documentElement.clientWidth, h: document.documentElement.scrollHeight})"
             )
