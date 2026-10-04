@@ -57,7 +57,7 @@ def test_screenshot_is_a_jpeg_of_the_page_top():
         async with async_playwright() as p:
             browser = await p.chromium.launch()
             page = await browser.new_page(viewport={"width": 800, "height": 600})
-            await page.set_content('<div style="height:5000px;background:#eee">tall page</div>')
+            await page.set_content('<div style="height:10000px;background:#eee">tall page</div>')
             shot = await Navigator()._screenshot(page)
             await browser.close()
             return shot

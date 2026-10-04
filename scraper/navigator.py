@@ -96,9 +96,9 @@ COOKIE_LABEL_RE = re.compile(
 SETTLE_MS_AFTER_IDLE = 500
 SETTLE_MS_STILL_BUSY = 3500
 
-# Page screenshots for the UI: the top of the page only (a long feed can be
-# 20,000 px tall), as a JPEG small enough to stream (~150-400 KB).
-SCREENSHOT_MAX_HEIGHT = 2400
+# Page screenshots for the UI: enough of the page for a whole results list
+# (Naukri's 20 jobs: 6,632 px, 427 KB) without an endless feed (20,000+ px).
+SCREENSHOT_MAX_HEIGHT = 8000
 SCREENSHOT_QUALITY = 55
 
 # Where things are on the page, for highlighting extracted records on the

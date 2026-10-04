@@ -155,11 +155,12 @@ def locate_records(records: list[Any], layout: dict | None) -> dict[int, dict]:
                 cover[b] = cover.get(b, 0) + 1
         for b, n in cover.items():
             if n >= need:
-                options.append((n, -tree.area(b), index, b))
+                options.append((-n, index, tree.area(b), b))
 
     # Best matches first; one block per record, none overlapping another.
     boxes: dict[int, dict] = {}
-    for n, _, index, b in sorted(options, reverse=True):
+    # Ties go to the earlier record: look-alike jobs are listed in page order.
+    for _, index, _, b in sorted(options):
         el = tree.els[b]
         box = {"x": el["x"], "y": el["y"], "w": el["w"], "h": el["h"]}
         if index in boxes or any(_overlap(box, other) > 0.5 for other in boxes.values()):
