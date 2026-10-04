@@ -62,6 +62,9 @@ class Brain:
         #: True when the last reply stopped at the output token limit
         #: (``finish_reason == "length"``), so its JSON was cut off.
         self.truncated = False
+        #: The model that gave the last reply; not the first in the pool
+        #: means the preferred model failed and a fallback answered.
+        self.model_used: str | None = None
 
     async def extract(
         self,
@@ -103,6 +106,7 @@ class Brain:
 
         last_error = None
         self.truncated = False
+        self.model_used = None
 
         # Iterate through model pool with automatic failover
         for model_name in self._models:
@@ -133,6 +137,7 @@ class Brain:
                     )
                 if content:
                     self.truncated = getattr(choice, "finish_reason", None) == "length"
+                    self.model_used = model_name
                     return content
                 logger.warning("Empty response from %s. Failing over to next model...", model_name)
 
@@ -147,6 +152,11 @@ class Brain:
                     await asyncio.sleep(1)
 
         raise last_error or RuntimeError("All models in the extraction pool exhausted.")
+
+    @property
+    def preferred_model(self) -> str:
+        """The model tried first; the rest of the pool is failover."""
+        return self._models[0]
 
 
 def _token_budget(model_name: str, prompt_chars: int) -> int:

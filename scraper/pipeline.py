@@ -223,6 +223,15 @@ class ScraperPipeline:
         # ── Steps 3–4: LLM extraction with self-healing retry loop ───────────
         data = await self._extract(cleaned, schema_description, expect_list, warnings)
 
+        used = getattr(self._brain, "model_used", None)
+        preferred = getattr(self._brain, "preferred_model", None)
+        if used and preferred and used != preferred:
+            warnings.append(
+                f"{preferred} was unavailable (rate limit or error), so {used} answered "
+                f"instead and the results may be less complete. Trying again in a minute "
+                f"usually gets {preferred} back."
+            )
+
         # finish_reason == "length" is the direct signal; the repair flag also
         # covers replies that ended mid-JSON for any other reason.
         if getattr(self._brain, "truncated", False) or self._validator.repaired:

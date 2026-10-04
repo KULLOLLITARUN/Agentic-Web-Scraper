@@ -203,3 +203,12 @@ def test_truncated_set_when_reply_hits_length_limit():
 
     extract(b)
     assert b.truncated is False
+
+
+def test_model_used_records_which_model_answered():
+    b, _ = make_brain([api_error(groq.RateLimitError, 429), "[]"])
+
+    extract(b)
+
+    assert b.preferred_model == MODELS[0]
+    assert b.model_used == MODELS[1]

@@ -223,3 +223,23 @@ def test_single_object_reads_only_the_first_page(monkeypatch):
 
     assert result["data"] == {"name": "one"}
     assert result["pages_scraped"] == 1
+
+
+def test_warns_when_a_fallback_model_answered():
+    p = ScraperPipeline(api_key="test-key")
+    p._brain = FakeBrain(['[{"name": "Item one"}]'])
+    p._brain.preferred_model = "openai/gpt-oss-120b"
+    p._brain.model_used = "openai/gpt-oss-20b"
+    result = asyncio.run(p.run("https://example.com", "name (string)"))
+
+    assert len(result["warnings"]) == 1
+    assert "gpt-oss-20b answered instead" in result["warnings"][0]
+
+
+def test_no_fallback_warning_when_preferred_model_answered():
+    p = ScraperPipeline(api_key="test-key")
+    p._brain = FakeBrain(['[{"name": "Item one"}]'])
+    p._brain.preferred_model = p._brain.model_used = "openai/gpt-oss-120b"
+    result = asyncio.run(p.run("https://example.com", "name (string)"))
+
+    assert result["warnings"] == []
