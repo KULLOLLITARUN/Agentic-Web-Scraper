@@ -14,6 +14,7 @@ from scraper.navigator import Navigator
 from scraper.distiller import Distiller, wanted_attributes
 from scraper.brain import Brain
 from scraper.chunking import CHUNK_CHARS, merge_items, split_text
+from scraper.locate import locate_records
 from scraper.pagination import find_next_page
 from scraper.validator import SchemaMismatchError, Validator, ValidationError
 
@@ -57,6 +58,7 @@ class ScraperPipeline:
         self.step = "idle"
         self._on_event: Callable[[dict[str, Any]], None] | None = None
         self._screenshots = False
+        self._layout: dict | None = None
 
     def _emit(self, event_type: str, **fields: Any) -> None:
         """Report progress to the ``on_event`` callback, if one was given."""
@@ -162,6 +164,7 @@ class ScraperPipeline:
                 for message in page_warnings:
                     self._warn(warnings, prefix + message)
                 if expect_list:
+                    self._emit_highlights(page, len(items), data)
                     items.extend(data)
                     page_counts.append(len(data))
                 else:
@@ -183,6 +186,19 @@ class ScraperPipeline:
             "pages_scraped": pages_scraped,
             "warnings": warnings,
         }
+
+    def _emit_highlights(self, page: int, first: int, records: list[Any]) -> None:
+        """Tell the UI where this page's records are on its screenshot."""
+        layout = getattr(self, "_layout", None)
+        if not layout:
+            return
+        try:
+            boxes = locate_records(records, layout)
+        except Exception as e:  # highlights are optional
+            logger.warning("Locating records failed: %s", e)
+            return
+        if boxes:
+            self._emit("highlights", page=page, boxes=[{"i": first + i, **box} for i, box in sorted(boxes.items())])
 
     @staticmethod
     def _next_page(raw_html: str, page_url: str, visited: set[str]) -> str | None:
@@ -222,6 +238,7 @@ class ScraperPipeline:
         )
         raw_html: str = await nav.fetch(url, scroll=scroll, max_scrolls=max_scrolls, screenshot=self._screenshots)
         shot = getattr(nav, "last_screenshot", None) if self._screenshots else None
+        self._layout = shot.get("layout") if shot else None
         if shot:
             # Shown in the UI next to the results; never stored in the result.
             self._emit(

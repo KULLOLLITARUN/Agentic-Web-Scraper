@@ -40,6 +40,7 @@ export default function App() {
   const [useFields, setUseFields] = useState(false);
   const [options, setOptions] = useState({ retries: 3, expectList: true, scroll: true, maxScrolls: 5, maxPages: 1, headless: true });
   const [pane, setPane] = useState('found'); // phones: which panel is showing
+  const [focus, setFocus] = useState(null); // record shown on both the page and in the results
   const [config, setConfig] = useState({ apiKey: '', model: '', backendUrl: 'http://localhost:8001', maxChars: 40000 });
   const [history, setHistory] = useState([]);
   const [runCount, setRunCount] = useState(0); // every run ever started here, for 'No. 0042'
@@ -79,6 +80,7 @@ export default function App() {
 
   // On phones, follow the run: the page while it's read, then the results.
   useEffect(() => {
+    if (state.status === 'running') setFocus(null);
     if (state.status === 'running') setPane('page');
     else if (state.status === 'done' || state.status === 'error') setPane('found');
   }, [state.status]);
@@ -135,6 +137,18 @@ export default function App() {
   };
 
   const showPanes = state.status !== 'idle' || !!state.result;
+  const isPhone = () => window.matchMedia('(max-width: 767px)').matches;
+  // Picked in the results: show it on the page (phones switch panel).
+  const pickFromResults = (i) => {
+    setFocus(i);
+    if (isPhone()) setPane('page');
+  };
+  // Picked on the page: show its card or row (phones switch panel).
+  const pickFromPage = (i) => {
+    setFocus(i);
+    if (isPhone()) setPane('found');
+    requestAnimationFrame(() => document.querySelector(`[data-row][data-i="${i}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+  };
   const found = state.status === 'running' ? state.total : state.result?.items ?? 0;
 
   return (
@@ -184,7 +198,7 @@ export default function App() {
             <h2 className="m-0 text-[13px] font-semibold text-muted">The page</h2>
             {state.request && <span className="text-xs text-faint truncate">{hostOf(state.request.url)}</span>}
           </div>
-          <PagePanel state={state} />
+          <PagePanel state={state} focus={focus} onFocus={setFocus} onPick={pickFromPage} />
         </section>
         <section className={`${pane === 'found' || !showPanes ? 'block' : 'hidden md:block'} ${showPanes ? '' : 'mt-6 md:mt-0'}`}>
           <div className="flex items-baseline justify-between gap-3 mb-2.5">
@@ -197,6 +211,9 @@ export default function App() {
             onPickExample={pickExample}
             onRetry={run}
             onEdit={() => document.querySelector('[aria-label="What to extract"]')?.focus()}
+            focus={focus}
+            onFocus={setFocus}
+            onPick={pickFromResults}
           />
         </section>
       </main>

@@ -399,3 +399,22 @@ def test_small_pages_are_not_reread(monkeypatch):
 
     assert result["items_count"] == 7
     assert result["warnings"] == []
+
+
+def test_emits_highlight_boxes_for_located_records(monkeypatch):
+    from tests.test_locate import BOOKS, card_page
+
+    async def fetch(self, url, **kwargs):
+        self.last_screenshot = {"jpeg": b"jpg", "width": 1000, "height": 1600, "layout": card_page(BOOKS)}
+        return PAGE
+
+    monkeypatch.setattr(FakeNavigator, "fetch", fetch)
+    p = ScraperPipeline(api_key="test-key")
+    p._brain = FakeBrain(['[{"title": "Tipping the Velvet", "price": 53.74}, {"title": "Missing", "price": 1.0}]'])
+    events = []
+    asyncio.run(p.run("https://example.com", "title (string), price (float)", on_event=events.append, screenshots=True))
+
+    marks = [e for e in events if e["type"] == "highlights"]
+    assert len(marks) == 1
+    assert marks[0]["page"] == 1
+    assert marks[0]["boxes"] == [{"i": 0, "x": 100, "y": 400, "w": 200, "h": 300}]

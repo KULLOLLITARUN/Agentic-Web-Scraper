@@ -30,6 +30,37 @@ function Scan({ viewport }) {
   );
 }
 
+const pad = (i) => String(i + 1).padStart(2, '0');
+
+/** One record's highlighter mark, drawn in like a marker stroke. */
+function Mark({ box, shot, focused, onFocus, onPick }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    motion(ref.current, { scaleX: [0, 1], duration: 420, ease: 'outQuart' });
+  }, []);
+  const pct = (v, total) => `${(v / total) * 100}%`;
+  const pos = { left: pct(box.x - 4, shot.width), top: pct(box.y - 3, shot.height), width: pct(box.w + 8, shot.width), height: pct(box.h + 6, shot.height) };
+  return (
+    <>
+      <button
+        ref={ref}
+        type="button"
+        onMouseEnter={() => onFocus(box.i)}
+        onMouseLeave={() => onFocus(null)}
+        onClick={() => onPick(box.i)}
+        aria-label={`Record ${pad(box.i)}`}
+        style={{ ...pos, transform: `rotate(${((box.i % 3) - 1) * 0.4}deg)` }}
+        className={`absolute origin-left rounded-[3px_10px_4px_12px] border-b-[3px] border-hl transition-[background-color,box-shadow] duration-200 mix-blend-multiply dark:mix-blend-normal ${
+          focused ? 'bg-hl/90 dark:bg-hl/45 shadow-[0_0_0_2px_rgb(var(--fg))]' : 'bg-hl/50 dark:bg-hl/25'
+        }`}
+      />
+      <span style={{ left: pos.left, top: pos.top }} className="absolute -translate-x-1.5 -translate-y-[11px] pointer-events-none bg-fg text-bg font-mono text-[11px] font-medium px-1.5 rounded-sm">
+        {pad(box.i)}
+      </span>
+    </>
+  );
+}
+
 function Loading({ url }) {
   return (
     <div className="h-full min-h-[320px] grid place-items-center p-8 text-center">
@@ -43,8 +74,8 @@ function Loading({ url }) {
   );
 }
 
-export default function PagePanel({ state }) {
-  const { status, step, shots, pages, current, logs, request } = state;
+export default function PagePanel({ state, focus = null, onFocus = () => {}, onPick = () => {} }) {
+  const { status, step, shots, marks = {}, pages, current, logs, request } = state;
   const viewport = useRef(null);
   const [shown, setShown] = useState(null); // page the user picked; null = follow the run
   const live = current.page || 1;
@@ -55,10 +86,26 @@ export default function PagePanel({ state }) {
   const ticker = logs.length ? logs[logs.length - 1].msg : '';
 
   useEffect(() => setShown(null), [request]);
+
+  // A record picked in the results: show its page and scroll its mark into view.
+  useEffect(() => {
+    if (focus == null) return;
+    const page = Object.keys(marks).find((n) => marks[n].some((b) => b.i === focus));
+    if (!page) return;
+    if (Number(page) !== pageNo) setShown(Number(page));
+    const box = marks[page].find((b) => b.i === focus);
+    const pageShot = shots[page];
+    requestAnimationFrame(() => {
+      const vp = viewport.current;
+      if (!vp || !pageShot) return;
+      const y = box.y * (vp.clientWidth / pageShot.width); // the screenshot is scaled to the panel's width
+      vp.scrollTo({ top: Math.max(0, y - 40), behavior: 'smooth' });
+    });
+  }, [focus]); // eslint-disable-line react-hooks/exhaustive-deps
   // Back to the top when switching pages or when reading stops.
   useEffect(() => {
-    if (viewport.current && !reading) viewport.current.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [pageNo, reading]);
+    if (viewport.current && !reading && focus == null) viewport.current.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [pageNo, reading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!request) {
     return (
@@ -91,6 +138,9 @@ export default function PagePanel({ state }) {
         {shot ? (
           <div className="relative w-full" style={{ aspectRatio: `${shot.width} / ${shot.height}` }}>
             <img src={shot.image} alt={`The page as it was loaded (page ${pageNo})`} className="block w-full h-full dark:brightness-[.93]" />
+            {(marks[pageNo] || []).map((box) => (
+              <Mark key={box.i} box={box} shot={shot} focused={focus === box.i} onFocus={onFocus} onPick={onPick} />
+            ))}
             {reading && <Scan viewport={viewport} />}
           </div>
         ) : status === 'running' ? (

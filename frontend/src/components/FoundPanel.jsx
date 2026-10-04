@@ -33,10 +33,12 @@ function titleKey(cols, rows) {
   return cols.find((c) => sample.some((r) => typeof r?.[c] === 'string' && !isUrl(r[c]) && r[c].length > 3)) || cols[0];
 }
 
-function Card({ row, i, cols, tkey }) {
+const canHover = () => typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches;
+
+function Card({ row, i, cols, tkey, focused, link }) {
   const others = cols.filter((c) => c !== tkey).slice(0, 4);
   return (
-    <article data-row className="bg-surface border border-line rounded px-3 pt-2 pb-2.5 text-left hover:border-fg transition-colors">
+    <article data-row data-i={i} {...link} className={`bg-surface border rounded px-3 pt-2 pb-2.5 text-left transition-[border-color,transform] cursor-pointer ${focused ? 'border-fg -translate-y-px' : 'border-line hover:border-fg'}`}>
       <div className="font-mono text-[11px] text-faint pb-1.5 mb-1.5 border-b border-pencil/30">No. {pad(i)}</div>
       <div className="font-semibold text-sm leading-snug line-clamp-2 mb-1.5"><Value v={row?.[tkey]} /></div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
@@ -136,7 +138,7 @@ function suggestions(step, message) {
   return tips.slice(0, 3);
 }
 
-function Results({ state, onRerun, onOpenSettings }) {
+function Results({ state, onRerun, onOpenSettings, focus, onFocus, onPick }) {
   const { result, retries, fallbackModel, request } = state;
   const rows = useMemo(() => toRows(result.data), [result]);
   const cols = useMemo(() => columnsOf(rows), [rows]);
@@ -145,6 +147,17 @@ function Results({ state, onRerun, onOpenSettings }) {
   const [copied, setCopied] = useState(false);
   const listRef = useRef(null);
   const notes = groupNotes(result.warnings);
+  const located = Object.values(state.marks || {}).some((boxes) => boxes.length);
+  const onPage = new Set(Object.values(state.marks || {}).flat().map((b) => b.i));
+  // Hover (desktop) or tap: show where a record is on the page.
+  const link = (i) =>
+    onPage.has(i)
+      ? {
+          onMouseEnter: () => canHover() && onFocus(i),
+          onMouseLeave: () => canHover() && onFocus(null),
+          onClick: () => onPick(i),
+        }
+      : {};
   const fill = fillRate(result.data);
 
   useEffect(() => setView(rows.length > 20 ? 'table' : 'cards'), [result]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -195,13 +208,16 @@ function Results({ state, onRerun, onOpenSettings }) {
             </button>
           ))}
         </div>
-        <span className="text-xs text-faint">{request?.schema && /\(\w/.test(request.schema) ? 'checked against your fields' : 'columns chosen from your description'}</span>
+        <span className="text-xs text-faint">
+          {located ? (canHover() ? 'hover a record to find it on the page' : 'tap a record to see it on the page')
+            : request?.schema && /\(\w/.test(request.schema) ? 'checked against your fields' : 'columns chosen from your description'}
+        </span>
       </div>
 
       <div ref={listRef} className="md:max-h-[calc(100vh-470px)] md:min-h-[280px] md:overflow-auto">
         {view === 'cards' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-px">
-            {rows.map((row, i) => <Card key={i} row={row} i={i} cols={cols} tkey={tkey} />)}
+            {rows.map((row, i) => <Card key={i} row={row} i={i} cols={cols} tkey={tkey} focused={focus === i} link={link(i)} />)}
           </div>
         )}
         {view === 'table' && (
@@ -215,7 +231,7 @@ function Results({ state, onRerun, onOpenSettings }) {
               </thead>
               <tbody>
                 {rows.map((row, i) => (
-                  <tr key={i} data-row className="hover:bg-pencil/[.05]">
+                  <tr key={i} data-row data-i={i} {...link(i)} className={`cursor-pointer ${focus === i ? 'bg-hl/30' : 'hover:bg-pencil/[.05]'}`}>
                     <td className="px-2.5 py-2 border-b border-line font-mono text-faint align-top">{pad(i)}</td>
                     {cols.map((c) => <td key={c} className="px-2.5 py-2 border-b border-line align-top max-w-[320px]"><Value v={row?.[c]} /></td>)}
                   </tr>
@@ -235,7 +251,7 @@ function Results({ state, onRerun, onOpenSettings }) {
   );
 }
 
-export default function FoundPanel({ state, onRerun, onOpenSettings, onPickExample, onRetry, onEdit }) {
+export default function FoundPanel({ state, onRerun, onOpenSettings, onPickExample, onRetry, onEdit, focus = null, onFocus = () => {}, onPick = () => {} }) {
   const { status, total, error } = state;
 
   if (status === 'idle' && !state.result) {
@@ -278,5 +294,5 @@ export default function FoundPanel({ state, onRerun, onOpenSettings, onPickExamp
     );
   }
 
-  return state.result ? <Results state={state} onRerun={onRerun} onOpenSettings={onOpenSettings} /> : null;
+  return state.result ? <Results state={state} onRerun={onRerun} onOpenSettings={onOpenSettings} focus={focus} onFocus={onFocus} onPick={onPick} /> : null;
 }

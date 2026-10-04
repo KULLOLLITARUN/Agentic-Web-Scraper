@@ -16,6 +16,7 @@ const initial = {
   warnings: [],
   logs: [], // { t, kind, msg }, oldest first
   shots: {}, // page number -> { image, width, height }
+  marks: {}, // page number -> [{ i, x, y, w, h }]: where each record is on that page's screenshot
   result: null, // { data, items, pages, elapsed }
   error: null, // { message, step, elapsed }
 };
@@ -71,6 +72,9 @@ function reducer(state, action) {
           next.logs = log(state, 'ai', `Extracting ${where}${e.text_chars.toLocaleString()} chars of text${retry}`);
         }
         return next;
+      }
+      if (e.type === 'highlights') {
+        return { ...state, marks: { ...state.marks, [e.page]: e.boxes } };
       }
       if (e.type === 'screenshot') {
         return { ...state, shots: { ...state.shots, [e.page]: { image: e.image, width: e.width, height: e.height } } };

@@ -101,6 +101,48 @@ SETTLE_MS_STILL_BUSY = 3500
 SCREENSHOT_MAX_HEIGHT = 2400
 SCREENSHOT_QUALITY = 55
 
+# Where things are on the page, for highlighting extracted records on the
+# screenshot: every element (box + parent) that holds visible text, and
+# that text, including title/alt/aria-label (Books to Scrape keeps full
+# titles there). Only the screenshot's area, so the result stays small.
+LAYOUT_JS = r"""
+(maxH) => {
+  const els = [], texts = [], ids = new Map();
+  const add = (el) => {
+    if (ids.has(el)) return ids.get(el);
+    const parent = el.parentElement && el.parentElement !== document.documentElement ? add(el.parentElement) : -1;
+    const b = el.getBoundingClientRect();
+    const i = els.length;
+    els.push({p: parent, x: Math.round(b.left + scrollX), y: Math.round(b.top + scrollY), w: Math.round(b.width), h: Math.round(b.height)});
+    ids.set(el, i);
+    return i;
+  };
+  const skip = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE']);
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  let node;
+  while ((node = walker.nextNode()) && texts.length < 6000) {
+    const t = node.textContent.replace(/\s+/g, ' ').trim();
+    const parent = node.parentElement;
+    if (!t || !parent || skip.has(parent.tagName)) continue;
+    range.selectNodeContents(node);
+    const b = range.getBoundingClientRect();
+    if (b.width < 1 || b.height < 1 || b.top + scrollY > maxH) continue;
+    texts.push({t: t.slice(0, 300), e: add(parent)});
+  }
+  for (const el of document.body.querySelectorAll('[title], img[alt], [aria-label]')) {
+    if (texts.length >= 8000) break;
+    const b = el.getBoundingClientRect();
+    if (b.width < 1 || b.height < 1 || b.top + scrollY > maxH) continue;
+    for (const attr of ['title', 'alt', 'aria-label']) {
+      const t = (el.getAttribute(attr) || '').replace(/\s+/g, ' ').trim();
+      if (t) texts.push({t: t.slice(0, 300), e: add(el)});
+    }
+  }
+  return {els, texts};
+}
+"""
+
 
 class Navigator:
     """Async context manager that drives a stealth headless Chromium browser via Playwright.
@@ -199,8 +241,9 @@ class Navigator:
     async def _screenshot(self, page: Page) -> dict | None:
         """JPEG of the page's top (up to SCREENSHOT_MAX_HEIGHT px), or None if it fails.
 
-        Returns ``{"jpeg": bytes, "width": int, "height": int}``. Taken after
-        scrolling, back at the top, so lazy images are loaded.
+        Returns ``{"jpeg": bytes, "width": int, "height": int, "layout": dict | None}``
+        (layout: see LAYOUT_JS). Taken after scrolling, back at the top, so
+        lazy images are loaded.
         """
         try:
             await page.evaluate("window.scrollTo(0, 0)")
@@ -215,7 +258,12 @@ class Navigator:
                 full_page=True,
                 clip={"x": 0, "y": 0, "width": width, "height": height},
             )
-            return {"jpeg": jpeg, "width": width, "height": height}
+            try:
+                layout = await page.evaluate(LAYOUT_JS, height)
+            except Exception as e:  # highlights are optional
+                logger.warning("Page layout capture failed: %s", e)
+                layout = None
+            return {"jpeg": jpeg, "width": width, "height": height, "layout": layout}
         except Exception as e:  # a missing screenshot must never fail the scrape
             logger.warning("Screenshot failed: %s", e)
             return None
