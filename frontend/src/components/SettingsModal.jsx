@@ -4,7 +4,7 @@ import Modal from './Modal';
 const DEFAULTS = {
   apiKey: '',
   model: '',
-  backendUrl: 'http://localhost:8000',
+  backendUrl: 'http://localhost:8001',
   maxChars: 40000,
 };
 

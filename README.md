@@ -173,7 +173,7 @@ On Windows, double-click or run:
 start.bat
 ```
 This automatically starts:
-* **FastAPI Backend:** `http://127.0.0.1:8000` (API Docs: `http://127.0.0.1:8000/docs`)
+* **FastAPI Backend:** `http://127.0.0.1:8001` (API Docs: `http://127.0.0.1:8001/docs`)
 * **Vite React UI:** `http://localhost:5173`
 
 ---
@@ -183,7 +183,7 @@ This automatically starts:
 Trigger the scraper directly via `cURL` or any HTTP client:
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/scrape" \
+curl -X POST "http://127.0.0.1:8001/scrape" \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://quotes.toscrape.com",
@@ -231,7 +231,7 @@ python cli.py https://quotes.toscrape.com -s "Each quote: text (string), author 
 `POST /scrape/stream` takes the same body and returns newline-delimited JSON, one event per line, as the pipeline runs. The Workbench uses this to drive its progress tracker.
 
 ```bash
-curl -N -X POST "http://127.0.0.1:8000/scrape/stream" \
+curl -N -X POST "http://127.0.0.1:8001/scrape/stream" \
   -H "Content-Type: application/json" \
   -d '{"url": "https://quotes.toscrape.com", "schema_description": "Each quote: text (string), author (string)"}'
 ```

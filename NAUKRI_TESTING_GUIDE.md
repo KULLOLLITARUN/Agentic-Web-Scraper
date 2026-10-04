@@ -129,7 +129,7 @@ During testing, we encountered and diagnosed two distinct real-world web defense
 
 ### Via cURL / API
 ```bash
-curl -X POST "http://127.0.0.1:8000/scrape" \
+curl -X POST "http://127.0.0.1:8001/scrape" \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://www.naukri.com/ai-ml-engineer-jobs-in-bangalore?k=ai%20ml%20engineer&l=bangalore&nignbevent_src=jobsearchDeskGNB",

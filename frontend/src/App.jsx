@@ -41,7 +41,7 @@ export default function App() {
   const [useFields, setUseFields] = useState(false);
   const [options, setOptions] = useState({ retries: 3, expectList: true, scroll: true, maxScrolls: 5, maxPages: 1, headless: true });
   const [pane, setPane] = useState('found'); // phones: which panel is showing
-  const [config, setConfig] = useState({ apiKey: '', model: '', backendUrl: 'http://localhost:8000', maxChars: 40000 });
+  const [config, setConfig] = useState({ apiKey: '', model: '', backendUrl: 'http://localhost:8001', maxChars: 40000 });
   const [history, setHistory] = useState([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -58,6 +58,10 @@ export default function App() {
       if (!saved.version && saved.model === LEGACY_DEFAULT_MODEL) saved.model = '';
       // Long pages are now read in parts, so the old one-request default of 12,000 moves up.
       if ((saved.version || 0) < 3 && Number(saved.maxChars) === 12000) saved.maxChars = 40000;
+      // The backend moved from port 8000 (often taken by other apps) to 8001.
+      if ((saved.version || 0) < 4 && /^https?:\/\/(localhost|127\.0\.0\.1):8000\/?$/.test(saved.backendUrl || '')) {
+        saved.backendUrl = saved.backendUrl.replace(':8000', ':8001');
+      }
       setConfig((prev) => ({ ...prev, ...saved }));
     }
   }, []);
@@ -207,7 +211,7 @@ export default function App() {
           }
         }}
       />
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} config={config} onSave={(next) => { setConfig(next); saveJson('ai_scraper_config', { ...next, version: 3 }); }} />
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} config={config} onSave={(next) => { setConfig(next); saveJson('ai_scraper_config', { ...next, version: 4 }); }} />
     </div>
   );
 }

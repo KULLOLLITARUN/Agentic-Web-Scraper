@@ -19,8 +19,8 @@ if not exist "%PYTHON_EXE%" (
     set "PYTHON_EXE=py -3.12"
 )
 
-echo [1/2] Starting FastAPI Backend on http://127.0.0.1:8000...
-start "AI Scraper - Backend API" cmd /k "color 0A && title AI Scraper Backend (8000) && %PYTHON_EXE% -m uvicorn api.main:app --host 127.0.0.1 --port 8000"
+echo [1/2] Starting FastAPI Backend on http://127.0.0.1:8001...
+start "AI Scraper - Backend API" cmd /k "color 0A && title AI Scraper Backend (8001) && %PYTHON_EXE% -m uvicorn api.main:app --host 127.0.0.1 --port 8001"
 
 timeout /t 2 /nobreak >nul
 
@@ -38,7 +38,7 @@ echo.
 echo ==========================================================
 echo [SUCCESS] Both services launched in separate windows!
 echo - UI Workbench: http://localhost:5173
-echo - API Docs:     http://localhost:8000/docs
+echo - API Docs:     http://localhost:8001/docs
 echo ==========================================================
 echo.
 pause

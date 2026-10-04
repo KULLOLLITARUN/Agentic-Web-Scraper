@@ -159,7 +159,7 @@ export function useScrape() {
     dispatch({ type: 'start', startedAt: performance.now(), request: { url: params.url, schema: params.schema, maxPages } });
 
     try {
-      const base = (params.backendUrl || 'http://localhost:8000').replace(/\/$/, '');
+      const base = (params.backendUrl || 'http://localhost:8001').replace(/\/$/, '');
       const response = await fetch(`${base}/scrape/stream`, {
         method: 'POST',
         signal: controller.signal,
