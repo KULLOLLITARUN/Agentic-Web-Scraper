@@ -3,7 +3,7 @@
 // for a details view. Matches the wording in scraper/pipeline.py.
 
 const KINDS = [
-  { id: 'fallback', test: /was unavailable/, title: 'Fallback model used', tone: 'warn',
+  { id: 'fallback', test: /backup model answered|was unavailable/, title: 'Backup model used', tone: 'warn',
     hint: 'It can miss items.', action: 'rerun' },
   { id: 'length', test: /hit its length limit/, title: 'Output cut short', tone: 'warn',
     hint: 'The model ran out of room; items after the cut are missing.' },

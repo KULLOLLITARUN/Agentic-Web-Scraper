@@ -392,9 +392,8 @@ class ScraperPipeline:
         preferred = getattr(self._brain, "preferred_model", None)
         if used and preferred and used != preferred:
             warnings.append(
-                f"{preferred} was unavailable (rate limit or error), so {used} answered "
-                "instead and the results may be less complete. Groq's free tier limits tokens "
-                "per minute and per day; try again later for a fuller result."
+                "The main AI model was busy (usage limit or error), so a backup model answered "
+                "instead and the results may be less complete. Try again later for a fuller result."
             )
 
         # finish_reason == "length" is the direct signal; the repair flag also

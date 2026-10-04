@@ -175,3 +175,20 @@ def test_cors_origins_env_is_parsed(monkeypatch):
     monkeypatch.setenv("CORS_ORIGINS", " https://scraper.example.com/ , https://b.example ,")
 
     assert api_main.allowed_origins() == ["https://scraper.example.com", "https://b.example"]
+
+
+def test_public_error_hides_model_and_account_ids():
+    raw = RuntimeError("Rate limit reached for model `openai/gpt-oss-120b` in organization `org_01abc` on tokens")
+    message = api_main.public_error(raw)
+
+    assert "gpt-oss" not in message and "org_" not in message
+    assert api_main.public_error(RuntimeError("Page returned HTTP 404")) == "Page returned HTTP 404"
+
+
+def test_stream_error_event_is_sanitised(client):
+    FakePipeline.error = RuntimeError("qwen/qwen3.8-27b failed")
+    response = client.post("/scrape/stream", json={"url": "https://example.com", "schema_description": "x"})
+    events = [json.loads(line) for line in response.text.splitlines() if line.strip()]
+
+    error = [e for e in events if e["type"] == "error"][0]
+    assert "qwen" not in error["message"]

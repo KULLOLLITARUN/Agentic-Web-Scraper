@@ -9,7 +9,12 @@ const DEFAULTS = {
 };
 
 // Keep in sync with MODELS in scraper/brain.py.
-const MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'];
+// Keep the ids in sync with MODELS in scraper/brain.py; only the labels are shown.
+const MODELS = [
+  { id: 'openai/gpt-oss-120b', label: 'Best quality' },
+  { id: 'openai/gpt-oss-20b', label: 'Faster' },
+  { id: 'qwen/qwen3.8-27b', label: 'Alternative' },
+];
 
 function Field({ label, hint, children }) {
   return (
@@ -67,20 +72,21 @@ export default function SettingsModal({ isOpen, onClose, config = {}, onSave }) 
         <Field label="Backend URL" hint="Where the FastAPI server is running.">
           <input className="field font-mono text-[13px]" value={form.backendUrl} onChange={set('backendUrl')} />
         </Field>
-        <Field label="Model" hint="Tried first; the other models are used as fallbacks if it is rate-limited.">
+        <Field label="AI quality" hint="Used first; if it is busy, another one answers instead.">
           <select className="field" value={form.model} onChange={set('model')}>
-            <option value="">Auto (gpt-oss-120b first)</option>
-            {[...new Set([...MODELS, form.model].filter(Boolean))].map((m) => (
-              <option key={m} value={m}>
-                {m}
+            <option value="">Automatic (recommended)</option>
+            {MODELS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
               </option>
             ))}
+            {form.model && !MODELS.some((m) => m.id === form.model) && <option value={form.model}>Custom</option>}
           </select>
         </Field>
         <Field label="API key" hint="Optional. Leave blank to use the server's .env key.">
           <input type="password" className="field" placeholder="••••••••" value={form.apiKey} onChange={set('apiKey')} />
         </Field>
-        <Field label="Max page text (characters)" hint="Long pages are read in parts of 12,000 characters; text beyond this total is cut off. Higher catches more items on long pages but takes longer (the free Groq tier reads roughly 25,000 characters a minute).">
+        <Field label="Max page text (characters)" hint="Long pages are read in parts of 12,000 characters; text beyond this total is cut off. Higher catches more items on long pages but takes longer (about 25,000 characters a minute on the free plan).">
           <input type="number" min={1000} max={200000} step={1000} className="field" value={form.maxChars} onChange={set('maxChars')} />
         </Field>
       </form>

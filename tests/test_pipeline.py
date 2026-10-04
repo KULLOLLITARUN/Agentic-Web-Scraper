@@ -234,7 +234,8 @@ def test_warns_when_a_fallback_model_answered():
     result = asyncio.run(p.run("https://example.com", "name (string)"))
 
     assert len(result["warnings"]) == 1
-    assert "gpt-oss-20b answered instead" in result["warnings"][0]
+    assert "a backup model answered instead" in result["warnings"][0]
+    assert "gpt-oss" not in result["warnings"][0]
 
 
 def test_no_fallback_warning_when_preferred_model_answered():

@@ -96,11 +96,11 @@ function reducer(state, action) {
         };
       }
       if (e.type === 'warning') {
-        const fallback = e.message.match(/so (\S+) answered/);
+        const backup = /backup model answered/.test(e.message);
         return {
           ...state,
           warnings: [...state.warnings, e.message],
-          fallbackModel: fallback ? fallback[1] : state.fallbackModel,
+          fallbackModel: backup || state.fallbackModel,
           logs: log(state, 'warn', e.message),
         };
       }

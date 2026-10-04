@@ -7,7 +7,6 @@ import { STEPS } from '../lib/useScrape';
 import { NumberTicker } from './ui';
 import { PRESETS } from './Composer';
 
-const short = (model) => (model || '').replace(/^openai\//, '');
 const isUrl = (v) => typeof v === 'string' && /^https?:\/\//.test(v);
 const pad = (i) => String(i + 1).padStart(2, '0');
 const label = (key) => key.replace(/_/g, ' ');
@@ -126,8 +125,8 @@ function suggestions(step, message) {
   const m = message.toLowerCase();
   const tips = [];
   if (m.includes('/scrape/stream') || m.includes('failed to fetch') || m.includes('networkerror')) tips.push('Is the backend running? Start it with start.bat, or check the backend URL in Settings.');
-  if (m.includes('api key') || m.includes('401') || m.includes('authentication')) tips.push('Check the Groq API key in .env, or paste one in Settings.');
-  if (m.includes('rate limit') || m.includes('429') || m.includes('tokens per')) tips.push("Groq's free limit was reached. Wait a minute (or until tomorrow for the daily limit).");
+  if (m.includes('api key') || m.includes('401') || m.includes('authentication')) tips.push('Check the API key in .env, or paste one in Settings.');
+  if (m.includes('rate limit') || m.includes('usage limit') || m.includes('429') || m.includes('tokens per')) tips.push('The usage limit was reached. Wait a minute (the daily limit resets over the day).');
   if (step === 'fetch') {
     tips.push('Open the link in your browser to check it exists.');
     tips.push('Sites that block bots: turn on “show browser window” in advanced.');
@@ -137,7 +136,7 @@ function suggestions(step, message) {
   return tips.slice(0, 3);
 }
 
-function Results({ state, model, onRerun, onOpenSettings }) {
+function Results({ state, onRerun, onOpenSettings }) {
   const { result, retries, fallbackModel, request } = state;
   const rows = useMemo(() => toRows(result.data), [result]);
   const cols = useMemo(() => columnsOf(rows), [rows]);
@@ -175,7 +174,7 @@ function Results({ state, model, onRerun, onOpenSettings }) {
         <span><b className="font-mono font-medium text-fg">{result.elapsed}s</b></span>
         {fill != null && <span><b className="font-mono font-medium text-fg">{Math.round(fill * 100)}%</b> fields filled</span>}
         {retries > 0 && <span><b className="font-mono font-medium text-fg">{retries}</b> asked again</span>}
-        <span>model <b className={`font-mono font-medium ${fallbackModel ? 'text-warn' : 'text-fg'}`}>{short(fallbackModel || model)}</b>{fallbackModel && ' (backup)'}</span>
+        {fallbackModel && <span className="text-warn">backup model used</span>}
       </div>
 
       {notes.map((n) => (
@@ -236,7 +235,7 @@ function Results({ state, model, onRerun, onOpenSettings }) {
   );
 }
 
-export default function FoundPanel({ state, model, onRerun, onOpenSettings, onPickExample, onRetry, onEdit }) {
+export default function FoundPanel({ state, onRerun, onOpenSettings, onPickExample, onRetry, onEdit }) {
   const { status, total, error } = state;
 
   if (status === 'idle' && !state.result) {
@@ -279,5 +278,5 @@ export default function FoundPanel({ state, model, onRerun, onOpenSettings, onPi
     );
   }
 
-  return state.result ? <Results state={state} model={model} onRerun={onRerun} onOpenSettings={onOpenSettings} /> : null;
+  return state.result ? <Results state={state} onRerun={onRerun} onOpenSettings={onOpenSettings} /> : null;
 }

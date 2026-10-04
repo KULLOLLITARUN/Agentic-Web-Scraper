@@ -10,7 +10,6 @@ import { parseFields } from './lib/schema';
 import { appTitle } from './lib/brand';
 
 const LEGACY_DEFAULT_MODEL = 'qwen/qwen3.8-27b';
-const DEFAULT_MODEL = 'openai/gpt-oss-120b'; // first in MODELS, scraper/brain.py
 
 function loadJson(key) {
   try {
@@ -84,7 +83,6 @@ export default function App() {
     else if (state.status === 'done' || state.status === 'error') setPane('found');
   }, [state.status]);
 
-  const model = config.model || DEFAULT_MODEL;
   const request = buildRequest(what, fields, useFields);
 
   const run = () => {
@@ -194,7 +192,6 @@ export default function App() {
           </div>
           <FoundPanel
             state={state}
-            model={model}
             onRerun={run}
             onOpenSettings={() => setIsSettingsOpen(true)}
             onPickExample={pickExample}

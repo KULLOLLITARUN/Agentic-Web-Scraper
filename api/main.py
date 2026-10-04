@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import time
 from datetime import datetime
@@ -32,6 +33,30 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv()
 
 from scraper.pipeline import ScraperPipeline  # noqa: E402
+
+import groq  # noqa: E402
+
+# Model ids and account ids never reach the UI ("model `openai/gpt-oss-120b`
+# in organization `org_...`" is in Groq's rate-limit messages).
+_MODEL_ID_RE = re.compile(r"`?\b(?:openai/|qwen/|meta-llama/)?(?:gpt-oss|qwen|llama)\b[\w.\-/]*`?", re.IGNORECASE)
+_ORG_RE = re.compile(r"\s*in organization `?org_\w+`?", re.IGNORECASE)
+
+
+def public_error(error: Exception) -> str:
+    """A message for the UI: plain words, without model names or account ids."""
+    if isinstance(error, (groq.RateLimitError,)) or (
+        isinstance(error, groq.APIStatusError) and error.status_code == 413
+    ):
+        return ("The AI service's usage limit was reached. Try again in a minute; "
+                "the daily limit resets over the day.")
+    if isinstance(error, (groq.AuthenticationError, groq.PermissionDeniedError)):
+        return "The AI service rejected the API key. Check GROQ_API_KEY in .env, or the key in Settings."
+    if isinstance(error, groq.APIConnectionError):
+        return "Couldn't reach the AI service. Check the internet connection and try again."
+    if isinstance(error, groq.APIError):
+        return "The AI service returned an error. Try again in a moment."
+    message = _ORG_RE.sub("", str(error))
+    return _MODEL_ID_RE.sub("the AI model", message)
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -220,7 +245,7 @@ async def scrape(request: ScrapeRequest) -> ScrapeResponse:
                 items_count=0,
                 data=[],
                 elapsed_seconds=round(time.time() - start, 2),
-                error=str(e),
+                error=public_error(e),
             ).model_dump(),
         )
 
@@ -265,7 +290,7 @@ async def scrape_stream(request: ScrapeRequest) -> StreamingResponse:
             queue.put_nowait({
                 "type": "error",
                 "step": pipeline.step if pipeline else "idle",
-                "message": str(e),
+                "message": public_error(e),
                 "elapsed_seconds": round(time.time() - start, 2),
             })
         finally:
