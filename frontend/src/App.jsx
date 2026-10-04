@@ -41,6 +41,7 @@ export default function App() {
   const [options, setOptions] = useState({ retries: 3, expectList: true, scroll: true, maxScrolls: 5, maxPages: 1, headless: true });
   const [pane, setPane] = useState('found'); // phones: which panel is showing
   const [focus, setFocus] = useState(null); // record shown on both the page and in the results
+  const [flash, setFlash] = useState({ i: null, n: 0 }); // a record clicked in the results: its mark blinks
   const [config, setConfig] = useState({ apiKey: '', model: '', backendUrl: 'http://localhost:8001', maxChars: 40000 });
   const [history, setHistory] = useState([]);
   const [runCount, setRunCount] = useState(0); // every run ever started here, for 'No. 0042'
@@ -81,6 +82,7 @@ export default function App() {
   // On phones, follow the run: the page while it's read, then the results.
   useEffect(() => {
     if (state.status === 'running') setFocus(null);
+    if (state.status === 'running') setFlash((f) => ({ i: null, n: f.n }));
     if (state.status === 'running') setPane('page');
     else if (state.status === 'done' || state.status === 'error') setPane('found');
   }, [state.status]);
@@ -138,9 +140,10 @@ export default function App() {
 
   const showPanes = state.status !== 'idle' || !!state.result;
   const isPhone = () => window.matchMedia('(max-width: 767px)').matches;
-  // Picked in the results: show it on the page (phones switch panel).
+  // Picked in the results: show it on the page and blink its mark (phones switch panel).
   const pickFromResults = (i) => {
     setFocus(i);
+    setFlash((f) => ({ i, n: f.n + 1 }));
     if (isPhone()) setPane('page');
   };
   // Picked on the page: show its card or row (phones switch panel).
@@ -198,7 +201,7 @@ export default function App() {
             <h2 className="m-0 text-[13px] font-semibold text-muted">The page</h2>
             {state.request && <span className="text-xs text-faint truncate">{hostOf(state.request.url)}</span>}
           </div>
-          <PagePanel state={state} focus={focus} onFocus={setFocus} onPick={pickFromPage} />
+          <PagePanel state={state} focus={focus} flash={flash} onFocus={setFocus} onPick={pickFromPage} />
         </section>
         <section className={`${pane === 'found' || !showPanes ? 'block' : 'hidden md:block'} ${showPanes ? '' : 'mt-6 md:mt-0'}`}>
           <div className="flex items-baseline justify-between gap-3 mb-2.5">

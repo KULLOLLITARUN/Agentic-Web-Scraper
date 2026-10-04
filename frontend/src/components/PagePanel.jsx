@@ -33,11 +33,16 @@ function Scan({ viewport }) {
 const pad = (i) => String(i + 1).padStart(2, '0');
 
 /** One record's highlighter mark, drawn in like a marker stroke. */
-function Mark({ box, shot, focused, onFocus, onPick }) {
+function Mark({ box, shot, focused, flash, onFocus, onPick }) {
   const ref = useRef(null);
   useEffect(() => {
     motion(ref.current, { scaleX: [0, 1], duration: 420, ease: 'outQuart' });
   }, []);
+  // Clicked in the results: blink once the panel has scrolled to it.
+  useEffect(() => {
+    if (!flash) return;
+    motion(ref.current, { opacity: [1, 0.2, 1, 0.2, 1], duration: 900, delay: 350, ease: 'linear' });
+  }, [flash]);
   const pct = (v, total) => `${(v / total) * 100}%`;
   const pos = { left: pct(box.x - 4, shot.width), top: pct(box.y - 3, shot.height), width: pct(box.w + 8, shot.width), height: pct(box.h + 6, shot.height) };
   return (
@@ -74,7 +79,7 @@ function Loading({ url }) {
   );
 }
 
-export default function PagePanel({ state, focus = null, onFocus = () => {}, onPick = () => {} }) {
+export default function PagePanel({ state, focus = null, flash = {}, onFocus = () => {}, onPick = () => {} }) {
   const { status, step, shots, marks = {}, pages, current, logs, request } = state;
   const viewport = useRef(null);
   const [shown, setShown] = useState(null); // page the user picked; null = follow the run
@@ -139,7 +144,7 @@ export default function PagePanel({ state, focus = null, onFocus = () => {}, onP
           <div className="relative w-full" style={{ aspectRatio: `${shot.width} / ${shot.height}` }}>
             <img src={shot.image} alt={`The page as it was loaded (page ${pageNo})`} className="block w-full h-full dark:brightness-[.93]" />
             {(marks[pageNo] || []).map((box) => (
-              <Mark key={box.i} box={box} shot={shot} focused={focus === box.i} onFocus={onFocus} onPick={onPick} />
+              <Mark key={box.i} box={box} shot={shot} focused={focus === box.i} flash={flash.i === box.i ? flash.n : 0} onFocus={onFocus} onPick={onPick} />
             ))}
             {reading && <Scan viewport={viewport} />}
           </div>

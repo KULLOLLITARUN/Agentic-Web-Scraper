@@ -76,3 +76,55 @@ def test_page_without_repeated_blocks_gets_nothing():
 
 def test_no_layout_means_no_boxes():
     assert locate_records([{"a": "b"}], None) == {}
+
+
+def with_links(page, links, url="https://shop.test/list"):
+    """Add ``<a>`` elements: *links* is ``[(card number, text, href)]``; text "" wraps the card."""
+    page = {**page, "links": [], "url": url}
+    cards = [e for e, el in enumerate(page["els"]) if el["p"] == 1]
+    for card_no, text, href in links:
+        card = cards[card_no]
+        if text:
+            e = len(page["els"])
+            page["els"].append({"p": card, "x": 110, "y": 0, "w": 50, "h": 18})
+        else:
+            # An <a> around the whole card: the card's new parent.
+            e = len(page["els"])
+            page["els"].append({**page["els"][card], "p": 1})
+            page["els"][card]["p"] = e
+        page["links"].append({"h": href, "e": e, "t": text})
+    return page
+
+
+def test_record_link_is_the_one_named_after_it():
+    page = with_links(card_page(BOOKS), [
+        (1, "Add to basket", "https://shop.test/basket/add?id=2"),
+        (1, "Tipping the Velvet", "https://shop.test/tipping-the-velvet"),
+    ])
+    boxes = locate_records([{"title": "Tipping the Velvet", "price": 53.74}], page)
+
+    assert boxes[0]["href"] == "https://shop.test/tipping-the-velvet"
+
+
+def test_link_around_the_card_counts():
+    page = with_links(card_page(BOOKS), [(2, "", "https://shop.test/soumission")])
+    boxes = locate_records([{"title": "Soumission", "price": 50.10}], page)
+
+    assert boxes[0]["href"] == "https://shop.test/soumission"
+
+
+def test_action_and_self_links_are_skipped():
+    page = with_links(card_page(BOOKS), [
+        (0, "upvote", "https://news.test/vote?id=1&how=up"),
+        (0, "top", "https://shop.test/list#top"),
+    ])
+    boxes = locate_records([{"title": "A Light in the Attic", "price": 51.77}], page)
+
+    assert "href" not in boxes[0]
+
+
+def test_links_in_other_cards_are_not_used():
+    page = with_links(card_page(BOOKS), [(0, "A Light in the ...", "https://shop.test/a-light")])
+    boxes = locate_records([{"title": "Soumission", "price": 50.10}], page)
+
+    assert "href" not in boxes[0]

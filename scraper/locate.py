@@ -16,10 +16,16 @@ title/alt/aria-label, each with the element holding it). For each record:
 
 Records whose values can't be found together (fewer than two, unless the
 record has a single field) get no box: a wrong highlight is worse than none.
+
+A placed record also gets ``href``: the link to the item itself, taken from
+its block (``links`` in the layout), so the UI can open the real item page
+without asking the model for URLs.
 """
 
 import re
 from typing import Any
+
+from scraper.distiller import ACTION_HREF_RE
 
 #: A record's box may cover at most this share of the captured page area.
 MAX_AREA_SHARE = 0.3
@@ -166,6 +172,9 @@ def locate_records(records: list[Any], layout: dict | None) -> dict[int, dict]:
         if index in boxes or any(_overlap(box, other) > 0.5 for other in boxes.values()):
             continue
         boxes[index] = box
+        href = _item_link(tree, b, records[index], layout)
+        if href:
+            box["href"] = href
 
     # A box far smaller than the page's usual item is a stray match.
     if len(boxes) >= 3:
@@ -173,6 +182,38 @@ def locate_records(records: list[Any], layout: dict | None) -> dict[int, dict]:
         typical = areas[len(areas) // 2]
         boxes = {i: bx for i, bx in boxes.items() if bx["w"] * bx["h"] >= MIN_AREA_SHARE * typical}
     return boxes
+
+
+def _item_link(tree: "_Tree", block: int, record: Any, layout: dict) -> str | None:
+    """The link that leads to the record's own page, if its block has one.
+
+    Links inside the block (or wrapped around it) are candidates; action
+    links (vote, log in...) and links back to the page itself are not. A
+    link whose text is one of the record's values (usually the title) wins,
+    then a link wrapped around the whole block, then the first in the block.
+    """
+    page = (layout.get("url") or "").split("#")[0]
+    needles = _values(record)
+    best, best_score = None, -1
+    for link in layout.get("links") or []:
+        href = link.get("h") or ""
+        e = link.get("e")
+        if not isinstance(e, int) or not 0 <= e < len(tree.els):
+            continue
+        if not href.startswith(("http://", "https://")) or ACTION_HREF_RE.search(href):
+            continue
+        if href.split("#")[0] == page:
+            continue
+        if tree.inside(e, block):
+            text = _norm(link.get("t") or "")
+            score = 2 if text and any(_matches(n, text) for n in needles) else 0
+        elif tree.inside(block, e):
+            score = 1
+        else:
+            continue
+        if score > best_score:  # ties: the first in page order
+            best, best_score = href, score
+    return best
 
 
 def _overlap(a: dict, b: dict) -> float:

@@ -35,11 +35,36 @@ function titleKey(cols, rows) {
 
 const canHover = () => typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches;
 
-function Card({ row, i, cols, tkey, focused, link }) {
+const IMAGE_KEY = /image|img|photo|picture|thumb|logo|avatar|icon/i;
+/** Where a record's own page is: a link field the user asked for, else the link found in its block on the page. */
+function itemUrl(row, href) {
+  if (row && typeof row === 'object') {
+    const key = Object.keys(row).find((k) => isUrl(row[k]) && /url|link|href|website/i.test(k) && !IMAGE_KEY.test(k));
+    if (key) return row[key];
+  }
+  return href || null;
+}
+
+function OpenLink({ url }) {
+  if (!url) return null;
+  return (
+    <a href={url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title={url}
+      className="font-mono text-[11px] text-muted underline decoration-line2 underline-offset-2 hover:text-fg hover:decoration-fg whitespace-nowrap">
+      open ↗
+    </a>
+  );
+}
+
+const MISSED = 'isn’t marked on the page picture';
+
+function Card({ row, i, cols, tkey, focused, link, url, missed }) {
   const others = cols.filter((c) => c !== tkey).slice(0, 4);
   return (
     <article data-row data-i={i} {...link} className={`bg-surface border rounded px-3 pt-2 pb-2.5 text-left transition-[border-color,transform] cursor-pointer ${focused ? 'border-fg -translate-y-px' : 'border-line hover:border-fg'}`}>
-      <div className="font-mono text-[11px] text-faint pb-1.5 mb-1.5 border-b border-pencil/30">No. {pad(i)}</div>
+      <div className="flex justify-between gap-2 font-mono text-[11px] text-faint pb-1.5 mb-1.5 border-b border-pencil/30">
+        <span>No. {pad(i)}</span>
+        <OpenLink url={url} />
+      </div>
       <div className="font-semibold text-sm leading-snug line-clamp-2 mb-1.5"><Value v={row?.[tkey]} /></div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
         {others.map((c) => (
@@ -49,6 +74,7 @@ function Card({ row, i, cols, tkey, focused, link }) {
           </React.Fragment>
         ))}
       </dl>
+      {missed && <div role="status" className="mt-2 text-xs text-pencil">This record {MISSED}.</div>}
     </article>
   );
 }
@@ -148,16 +174,25 @@ function Results({ state, onRerun, onOpenSettings, focus, onFocus, onPick }) {
   const listRef = useRef(null);
   const notes = groupNotes(result.warnings);
   const located = Object.values(state.marks || {}).some((boxes) => boxes.length);
-  const onPage = new Set(Object.values(state.marks || {}).flat().map((b) => b.i));
-  // Hover (desktop) or tap: show where a record is on the page.
+  const placed = Object.values(state.marks || {}).flat();
+  const onPage = new Set(placed.map((b) => b.i));
+  const hrefs = Object.fromEntries(placed.filter((b) => b.href).map((b) => [b.i, b.href]));
+  const [missed, setMissed] = useState(null); // a clicked record that has no mark
+  useEffect(() => {
+    if (missed == null) return undefined;
+    const t = setTimeout(() => setMissed(null), 2600);
+    return () => clearTimeout(t);
+  }, [missed]);
+  useEffect(() => setMissed(null), [result]);
+  // Hover (desktop) or click: show where a record is on the page, or say it isn't marked.
   const link = (i) =>
     onPage.has(i)
       ? {
           onMouseEnter: () => canHover() && onFocus(i),
           onMouseLeave: () => canHover() && onFocus(null),
-          onClick: () => onPick(i),
+          onClick: () => { setMissed(null); onPick(i); },
         }
-      : {};
+      : { onClick: () => { onFocus(null); setMissed(i); } };
   const fill = fillRate(result.data);
 
   useEffect(() => setView(rows.length > 20 ? 'table' : 'cards'), [result]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -208,8 +243,8 @@ function Results({ state, onRerun, onOpenSettings, focus, onFocus, onPick }) {
             </button>
           ))}
         </div>
-        <span className="text-xs text-faint">
-          {located ? (canHover() ? 'hover a record to find it on the page' : 'tap a record to see it on the page')
+        <span className="text-xs text-faint" aria-live="polite">
+          {missed != null ? <span className="text-pencil">No. {pad(missed)} {MISSED}</span> : located ? (canHover() ? 'hover a record to find it on the page' : 'tap a record to see it on the page')
             : request?.schema && /\(\w/.test(request.schema) ? 'checked against your fields' : 'columns chosen from your description'}
         </span>
       </div>
@@ -217,7 +252,7 @@ function Results({ state, onRerun, onOpenSettings, focus, onFocus, onPick }) {
       <div ref={listRef} className="md:max-h-[calc(100vh-470px)] md:min-h-[280px] md:overflow-auto">
         {view === 'cards' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-px">
-            {rows.map((row, i) => <Card key={i} row={row} i={i} cols={cols} tkey={tkey} focused={focus === i} link={link(i)} />)}
+            {rows.map((row, i) => <Card key={i} row={row} i={i} cols={cols} tkey={tkey} focused={focus === i} link={link(i)} url={itemUrl(row, hrefs[i])} missed={missed === i} />)}
           </div>
         )}
         {view === 'table' && (
@@ -231,8 +266,11 @@ function Results({ state, onRerun, onOpenSettings, focus, onFocus, onPick }) {
               </thead>
               <tbody>
                 {rows.map((row, i) => (
-                  <tr key={i} data-row data-i={i} {...link(i)} className={`cursor-pointer ${focus === i ? 'bg-hl/30' : 'hover:bg-pencil/[.05]'}`}>
-                    <td className="px-2.5 py-2 border-b border-line font-mono text-faint align-top">{pad(i)}</td>
+                  <tr key={i} data-row data-i={i} {...link(i)} className={`cursor-pointer ${focus === i ? 'bg-hl/30' : missed === i ? 'bg-pencil/[.07]' : 'hover:bg-pencil/[.05]'}`}>
+                    <td className="px-2.5 py-2 border-b border-line font-mono text-faint align-top whitespace-nowrap">
+                      {pad(i)}
+                      {itemUrl(row, hrefs[i]) && <span className="block mt-0.5"><OpenLink url={itemUrl(row, hrefs[i])} /></span>}
+                    </td>
                     {cols.map((c) => <td key={c} className="px-2.5 py-2 border-b border-line align-top max-w-[320px]"><Value v={row?.[c]} /></td>)}
                   </tr>
                 ))}

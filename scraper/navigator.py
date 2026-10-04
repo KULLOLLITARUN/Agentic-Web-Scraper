@@ -159,7 +159,15 @@ LAYOUT_JS = r"""
       if (t) texts.push({t: t.slice(0, 300), e: add(el)});
     }
   }
-  return {els, texts};
+  const links = [];
+  for (const a of document.body.querySelectorAll('a[href]')) {
+    if (links.length >= 3000) break;
+    if (!/^https?:/.test(a.href)) continue;
+    const b = a.getBoundingClientRect();
+    if (b.width < 1 || b.height < 1 || b.top + scrollY > maxH) continue;
+    links.push({h: a.href.slice(0, 500), e: add(a), t: (a.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200)});
+  }
+  return {els, texts, links, url: location.href};
 }
 """
 
