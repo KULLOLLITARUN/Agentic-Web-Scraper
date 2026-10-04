@@ -161,6 +161,11 @@ GROQ_API_KEY=gsk_your_groq_api_key_here
 GROQ_MODEL=qwen/qwen3.8-27b
 ```
 
+The API only accepts browser requests from `localhost` / `127.0.0.1` (any port). If you host the frontend elsewhere, list its address in `.env`:
+```env
+CORS_ORIGINS=https://scraper.example.com
+```
+
 ### 4. Launch Workbench (One-Click)
 
 On Windows, double-click or run:

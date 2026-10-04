@@ -137,3 +137,41 @@ def test_out_of_range_max_pages_rejected(client, max_pages):
     r = client.post("/scrape", json={"url": "https://example.com", "max_pages": max_pages})
 
     assert r.status_code == 422
+
+
+def preflight(client, origin):
+    return client.options(
+        "/scrape/stream",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    "origin", ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5190", "http://localhost"]
+)
+def test_cors_allows_local_frontend(client, origin):
+    response = preflight(client, origin)
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+    assert "access-control-allow-credentials" not in response.headers
+
+
+@pytest.mark.parametrize(
+    "origin", ["https://evil.example", "http://localhost.evil.example", "http://127.0.0.1.evil.example:5173"]
+)
+def test_cors_blocks_other_sites(client, origin):
+    response = preflight(client, origin)
+
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
+
+
+def test_cors_origins_env_is_parsed(monkeypatch):
+    monkeypatch.setenv("CORS_ORIGINS", " https://scraper.example.com/ , https://b.example ,")
+
+    assert api_main.allowed_origins() == ["https://scraper.example.com", "https://b.example"]

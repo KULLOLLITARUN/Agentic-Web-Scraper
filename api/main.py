@@ -51,12 +51,24 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# Only the local frontend (any port) may call the API from a browser, so a
+# website the user happens to visit can't run scrapes on their Groq key.
+# A deployed frontend is added with CORS_ORIGINS (comma-separated).
+LOCAL_ORIGIN_REGEX = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
+
+
+def allowed_origins() -> list[str]:
+    raw = os.environ.get("CORS_ORIGINS", "")
+    return [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=allowed_origins(),
+    allow_origin_regex=LOCAL_ORIGIN_REGEX,
+    allow_credentials=False,  # the frontend sends no cookies
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 
