@@ -68,7 +68,7 @@ class ScrapeRequest(BaseModel):
 
     url: str = Field(
         ...,
-        example="https://quotes.toscrape.com",
+        examples=["https://quotes.toscrape.com"],
         description="The target URL to scrape.",
     )
     schema_description: str | None = Field(
