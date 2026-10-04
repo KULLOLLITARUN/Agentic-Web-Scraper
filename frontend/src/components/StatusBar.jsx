@@ -9,9 +9,9 @@ const STATUS = {
   error: { label: 'Failed', dot: 'bg-bad', text: 'text-bad' },
 };
 
-function CountUp({ value, decimals = 0, suffix = '' }) {
+function CountUp({ value, decimals = 0, suffix = '', from = 0 }) {
   const ref = useRef(null);
-  const prev = useRef(0);
+  const prev = useRef(from);
 
   useEffect(() => {
     const target = Number(value) || 0;
@@ -31,9 +31,29 @@ function CountUp({ value, decimals = 0, suffix = '' }) {
   return <span ref={ref} className="tabular-nums">{(Number(value) || 0).toFixed(decimals) + suffix}</span>;
 }
 
+// Ticks the time since *startedAt* (a performance.now() value) while a scrape
+// runs. Writes to the DOM directly so the header doesn't re-render 10x a second.
+function LiveTimer({ startedAt, lastRef }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const tick = () => {
+      const seconds = (performance.now() - startedAt) / 1000;
+      lastRef.current = seconds;
+      if (ref.current) ref.current.textContent = seconds.toFixed(1) + 's';
+    };
+    tick();
+    const id = setInterval(tick, 100);
+    return () => clearInterval(id);
+  }, [startedAt, lastRef]);
+
+  return <span ref={ref} className="tabular-nums">0.0s</span>;
+}
+
 export default function StatusBar({
   status,
   metrics,
+  startedAt = null,
   onOpenSettings,
   onOpenHistory,
   historyCount = 0,
@@ -42,6 +62,8 @@ export default function StatusBar({
 }) {
   const s = STATUS[status] || STATUS.idle;
   const iconRef = useRef(null);
+  // Last live timer value, so the final time animates on from where it stopped.
+  const lastLive = useRef(0);
 
   const handleTheme = () => {
     motion(iconRef.current, { rotate: [0, 180], scale: [0.6, 1], duration: 500, ease: 'outBack(1.6)' });
@@ -71,7 +93,13 @@ export default function StatusBar({
           <span className="text-fg font-medium"><CountUp value={metrics.itemsCount} /></span> records
         </span>
         <span className="px-2.5 text-muted border-l border-line">
-          <span className="text-fg font-medium"><CountUp value={metrics.elapsed} decimals={2} suffix="s" /></span>
+          <span className="text-fg font-medium">
+            {startedAt != null ? (
+              <LiveTimer startedAt={startedAt} lastRef={lastLive} />
+            ) : (
+              <CountUp value={metrics.elapsed} decimals={2} suffix="s" from={lastLive.current} />
+            )}
+          </span>
         </span>
       </div>
 

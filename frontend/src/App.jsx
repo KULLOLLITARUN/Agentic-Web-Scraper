@@ -39,6 +39,7 @@ export default function App() {
 
   // Telemetry & metrics
   const [metrics, setMetrics] = useState({ elapsed: 0, itemsCount: 0 });
+  const [startedAt, setStartedAt] = useState(null); // performance.now() of the running scrape
 
   // Logs feed
   const [logs, setLogs] = useState([]);
@@ -106,6 +107,8 @@ export default function App() {
     stepRef.current = 'fetch';
 
     const startTime = performance.now();
+    setStartedAt(startTime);
+    setMetrics({ elapsed: 0, itemsCount: 0 });
     addLog(`Starting scrape of ${url}`, 'info', 'START');
 
     try {
@@ -152,8 +155,11 @@ export default function App() {
           handleStepEvent(event);
         } else if (event.type === 'retry') {
           addLog(`Attempt ${event.attempt} of ${event.max_attempts} failed validation: ${event.error}`, 'retry', 'RETRY');
-        } else if (event.type === 'page_done' && expectList && maxPages > 1) {
-          addLog(`Page ${event.page}: ${event.items} records (${event.total_items} so far)`, 'info', 'PAGE');
+        } else if (event.type === 'page_done') {
+          setMetrics((m) => ({ ...m, itemsCount: event.total_items }));
+          if (expectList && maxPages > 1) {
+            addLog(`Page ${event.page}: ${event.items} records (${event.total_items} so far)`, 'info', 'PAGE');
+          }
         } else if (event.type === 'warning') {
           addLog(event.message, 'warn', 'WARNING');
         } else if (event.type === 'result' || event.type === 'error') {
@@ -271,6 +277,7 @@ export default function App() {
       <StatusBar
         status={status}
         metrics={metrics}
+        startedAt={status === 'running' ? startedAt : null}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
         historyCount={history.length}
