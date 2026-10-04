@@ -15,6 +15,7 @@ const initial = {
   fallbackModel: null,
   warnings: [],
   logs: [], // { t, kind, msg }, oldest first
+  shots: {}, // page number -> { image, width, height }
   result: null, // { data, items, pages, elapsed }
   error: null, // { message, step, elapsed }
 };
@@ -70,6 +71,9 @@ function reducer(state, action) {
           next.logs = log(state, 'ai', `Extracting ${where}${e.text_chars.toLocaleString()} chars of text${retry}`);
         }
         return next;
+      }
+      if (e.type === 'screenshot') {
+        return { ...state, shots: { ...state.shots, [e.page]: { image: e.image, width: e.width, height: e.height } } };
       }
       if (e.type === 'retry') {
         return { ...state, retries: state.retries + 1, logs: log(state, 'retry', `Attempt ${e.attempt} didn't match your fields: ${e.error}`) };
@@ -173,6 +177,7 @@ export function useScrape() {
           model: params.model || null,
           api_key: params.apiKey || null,
           max_chars: params.maxChars || null,
+          screenshots: true,
         }),
       });
 

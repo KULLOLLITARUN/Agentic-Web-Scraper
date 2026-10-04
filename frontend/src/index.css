@@ -5,36 +5,40 @@
 /* Theme tokens (RGB channels so Tailwind opacity modifiers work). */
 :root {
   color-scheme: light;
-  --bg: 245 243 238;
-  --surface: 252 251 248;
-  --subtle: 238 235 228;
-  --line: 222 218 208;
-  --fg: 28 27 24;
-  --muted: 105 102 94;
-  --faint: 154 150 140;
-  --accent: 214 82 30;
-  --accent-fg: 255 255 255;
-  --accent2: 37 99 135;
-  --ok: 46 125 80;
-  --warn: 176 112 12;
-  --bad: 190 45 45;
+  --bg: 243 244 240;
+  --surface: 255 255 255;
+  --subtle: 236 238 233;
+  --line: 217 220 227;
+  --line2: 195 200 211;
+  --fg: 20 33 61;
+  --muted: 75 86 115;
+  --faint: 133 142 164;
+  --accent: 20 33 61;
+  --accent-fg: 243 244 240;
+  --hl: 255 225 77;
+  --pencil: 200 36 58;
+  --ok: 43 122 72;
+  --warn: 168 106 0;
+  --bad: 200 36 58;
 }
 
 .dark {
   color-scheme: dark;
-  --bg: 22 21 19;
-  --surface: 30 29 26;
-  --subtle: 38 36 33;
-  --line: 52 50 45;
-  --fg: 236 233 226;
-  --muted: 160 156 146;
-  --faint: 108 105 97;
-  --accent: 245 122 66;
-  --accent-fg: 24 22 20;
-  --accent2: 110 168 204;
-  --ok: 110 190 140;
-  --warn: 226 170 70;
-  --bad: 236 110 100;
+  --bg: 14 21 37;
+  --surface: 21 31 53;
+  --subtle: 27 39 64;
+  --line: 37 50 79;
+  --line2: 52 67 106;
+  --fg: 232 236 244;
+  --muted: 166 176 199;
+  --faint: 108 120 147;
+  --accent: 232 236 244;
+  --accent-fg: 14 21 37;
+  --hl: 255 214 10;
+  --pencil: 255 111 120;
+  --ok: 99 208 143;
+  --warn: 230 180 80;
+  --bad: 255 111 120;
 }
 
 @layer base {
@@ -60,7 +64,7 @@
     @apply text-xs font-medium text-muted;
   }
   .eyebrow {
-    @apply font-mono text-[11px] uppercase tracking-[0.08em] text-muted;
+    @apply text-[13px] font-semibold text-muted;
   }
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md text-sm text-muted
@@ -88,10 +92,22 @@
 }
 
 @layer utilities {
-  /* Ruled paper: faint horizontal lines behind the workspace. */
-  .bg-ruled {
-    background-image: linear-gradient(rgb(var(--line) / 0.45) 1px, transparent 1px);
-    background-size: 100% 28px;
+  /* A marker stroke behind text (logo, the record count). */
+  .marker {
+    position: relative;
+    z-index: 0;
+  }
+  .marker::before {
+    content: '';
+    position: absolute;
+    left: -4px;
+    right: -6px;
+    top: 52%;
+    height: 44%;
+    background: rgb(var(--hl));
+    z-index: -1;
+    transform: skew(-12deg) rotate(-2deg);
+    border-radius: 2px 7px 3px 9px;
   }
 }
 

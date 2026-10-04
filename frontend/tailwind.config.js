@@ -16,13 +16,16 @@ export default {
         faint: token('faint'),
         accent: token('accent'),
         'accent-fg': token('accent-fg'),
-        accent2: token('accent2'),
+        line2: token('line2'),
+        hl: token('hl'),
+        pencil: token('pencil'),
         ok: token('ok'),
         warn: token('warn'),
         bad: token('bad'),
       },
       fontFamily: {
-        sans: ['"IBM Plex Sans"', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        serif: ['"Instrument Serif"', 'Georgia', 'serif'],
+        sans: ['"Schibsted Grotesk"', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
         mono: ['"IBM Plex Mono"', 'ui-monospace', 'Menlo', 'Consolas', 'monospace'],
       },
       boxShadow: {

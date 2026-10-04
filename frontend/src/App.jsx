@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import TopBar from './components/TopBar';
-import Composer, { PRESETS } from './components/Composer';
-import RunView from './components/RunView';
-import ResultsView from './components/ResultsView';
-import ErrorView from './components/ErrorView';
+import Header from './components/Header';
+import Composer, { PRESETS, buildRequest, toField } from './components/Composer';
+import PagePanel from './components/PagePanel';
+import FoundPanel from './components/FoundPanel';
 import HistoryModal from './components/HistoryModal';
 import SettingsModal from './components/SettingsModal';
 import { useScrape } from './lib/useScrape';
+import { parseFields } from './lib/schema';
+import { appTitle } from './lib/brand';
 
 const LEGACY_DEFAULT_MODEL = 'qwen/qwen3.8-27b';
 const DEFAULT_MODEL = 'openai/gpt-oss-120b'; // first in MODELS, scraper/brain.py
@@ -27,12 +28,19 @@ function saveJson(key, value) {
   }
 }
 
+const fieldsOf = (schema) => (parseFields(schema)?.fields || []).map(toField);
+const withScheme = (url) => (/^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`);
+const hostOf = (url) => url.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '');
+
 export default function App() {
+  const first = PRESETS[0];
   const [theme, setTheme] = useState(() => (document.documentElement.classList.contains('dark') ? 'dark' : 'light'));
-  const [url, setUrl] = useState(PRESETS[0].url);
-  const [schema, setSchema] = useState(PRESETS[0].schema);
+  const [url, setUrl] = useState(hostOf(first.url));
+  const [what, setWhat] = useState(first.what);
+  const [fields, setFields] = useState(() => fieldsOf(first.schema));
+  const [useFields, setUseFields] = useState(false);
   const [options, setOptions] = useState({ retries: 3, expectList: true, scroll: true, maxScrolls: 5, maxPages: 1, headless: true });
-  const [view, setView] = useState('compose'); // compose | run | results | error
+  const [pane, setPane] = useState('found'); // phones: which panel is showing
   const [config, setConfig] = useState({ apiKey: '', model: '', backendUrl: 'http://localhost:8000', maxChars: 40000 });
   const [history, setHistory] = useState([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -41,6 +49,7 @@ export default function App() {
   const { state } = scrape;
 
   useEffect(() => {
+    document.title = appTitle();
     const savedHistory = loadJson('ai_scraper_history');
     if (Array.isArray(savedHistory)) setHistory(savedHistory);
     const saved = loadJson('ai_scraper_config');
@@ -62,27 +71,29 @@ export default function App() {
     }
   }, [theme]);
 
-  // Follow the run: show progress, then results or the error.
+  // On phones, follow the run: the page while it's read, then the results.
   useEffect(() => {
-    if (state.status === 'running') setView('run');
-    else if (state.status === 'done') setView((v) => (v === 'run' ? 'results' : v));
-    else if (state.status === 'error') setView('error');
-    else if (state.status === 'idle') setView((v) => (v === 'run' ? 'compose' : v));
+    if (state.status === 'running') setPane('page');
+    else if (state.status === 'done' || state.status === 'error') setPane('found');
   }, [state.status]);
 
   const model = config.model || DEFAULT_MODEL;
+  const request = buildRequest(what, fields, useFields);
 
   const run = () => {
-    if (!url.trim() || !schema.trim()) return;
+    if (!url.trim() || !request) return;
+    const target = withScheme(url);
+    const snapshot = { what, fields, useFields };
     scrape.run(
-      { url, schema, ...options, backendUrl: config.backendUrl, model: config.model, apiKey: config.apiKey, maxChars: config.maxChars },
+      { url: target, schema: request, ...options, backendUrl: config.backendUrl, model: config.model, apiKey: config.apiKey, maxChars: config.maxChars },
       {
         onDone: (result) => {
           const entry = {
             id: Date.now(),
             timestamp: new Date().toLocaleString(),
-            url,
-            schema,
+            url: target,
+            schema: request,
+            ...snapshot,
             itemsCount: result.items,
             pagesScraped: result.pages,
             elapsed: result.elapsed,
@@ -99,32 +110,29 @@ export default function App() {
     );
   };
 
-  const edit = () => {
-    if (state.request) {
-      setUrl(state.request.url);
-      setSchema(state.request.schema);
-    }
-    setView('compose');
+  const pickExample = (p) => {
+    setUrl(hostOf(p.url));
+    setWhat(p.what);
+    setFields(fieldsOf(p.schema));
   };
 
   const openRun = (entry) => {
-    setUrl(entry.url);
-    setSchema(entry.schema);
+    setUrl(hostOf(entry.url));
+    setWhat(entry.what ?? entry.schema);
+    setFields(entry.fields ?? fieldsOf(entry.schema));
+    setUseFields(entry.useFields ?? false);
     scrape.load(entry);
-    setView('results');
     setIsHistoryOpen(false);
   };
 
-  const saveConfig = (next) => {
-    setConfig(next);
-    saveJson('ai_scraper_config', { ...next, version: 3 });
-  };
+  const showPanes = state.status !== 'idle' || !!state.result;
+  const found = state.status === 'running' ? state.total : state.result?.items ?? 0;
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <TopBar
-        request={view === 'compose' ? null : state.request}
-        onEdit={edit}
+    <div className="min-h-screen">
+      <Header
+        runNumber={showPanes ? history.length + (state.status === 'running' ? 1 : 0) : null}
+        onHome={() => scrape.reset()}
         onOpenHistory={() => setIsHistoryOpen(true)}
         historyCount={history.length}
         onOpenSettings={() => setIsSettingsOpen(true)}
@@ -132,23 +140,57 @@ export default function App() {
         onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
       />
 
-      <main className="flex-1 bg-ruled">
-        {view === 'compose' && (
-          <Composer
-            url={url}
-            setUrl={setUrl}
-            schema={schema}
-            setSchema={setSchema}
-            options={options}
-            setOption={(key, value) => setOptions((o) => ({ ...o, [key]: value }))}
-            onRun={run}
-            model={model.replace(/^openai\//, '')}
-            onBackToResults={state.result ? () => setView('results') : null}
+      <Composer
+        url={url}
+        setUrl={setUrl}
+        what={what}
+        setWhat={setWhat}
+        fields={fields}
+        setFields={setFields}
+        useFields={useFields}
+        setUseFields={setUseFields}
+        options={options}
+        setOption={(key, value) => setOptions((o) => ({ ...o, [key]: value }))}
+        running={state.status === 'running'}
+        onRun={run}
+        onStop={scrape.cancel}
+      />
+
+      {showPanes && (
+        <div className="md:hidden sticky top-[54px] z-20 bg-bg px-4 py-2 border-b border-line">
+          <div role="tablist" className="flex border border-line2 rounded-md overflow-hidden">
+            {[['page', 'The page'], ['found', `Found ${found}`]].map(([id, text], i) => (
+              <button key={id} role="tab" aria-selected={pane === id} onClick={() => setPane(id)}
+                className={`flex-1 py-2 text-[13px] ${i ? 'border-l border-line2' : ''} ${pane === id ? 'bg-fg text-bg' : 'bg-surface text-muted'}`}>
+                {text}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <main className="md:grid md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] md:gap-7 px-4 md:px-7 pt-3.5 md:pt-5 pb-28 md:pb-10">
+        <section className={pane === 'page' || !showPanes ? 'block' : 'hidden md:block'}>
+          <div className="flex items-baseline justify-between gap-3 mb-2.5">
+            <h2 className="m-0 text-[13px] font-semibold text-muted">The page</h2>
+            {state.request && <span className="text-xs text-faint truncate">{hostOf(state.request.url)}</span>}
+          </div>
+          <PagePanel state={state} />
+        </section>
+        <section className={`${pane === 'found' || !showPanes ? 'block' : 'hidden md:block'} ${showPanes ? '' : 'mt-6 md:mt-0'}`}>
+          <div className="flex items-baseline justify-between gap-3 mb-2.5">
+            <h2 className="m-0 text-[13px] font-semibold text-muted">What it found</h2>
+          </div>
+          <FoundPanel
+            state={state}
+            model={model}
+            onRerun={run}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+            onPickExample={pickExample}
+            onRetry={run}
+            onEdit={() => document.querySelector('[aria-label="What to extract"]')?.focus()}
           />
-        )}
-        {view === 'run' && <RunView state={state} model={model} onStop={scrape.cancel} />}
-        {view === 'results' && <ResultsView state={state} model={model} onRerun={run} onOpenSettings={() => setIsSettingsOpen(true)} />}
-        {view === 'error' && <ErrorView error={state.error} onRetry={run} onEdit={edit} />}
+        </section>
       </main>
 
       <HistoryModal
@@ -165,7 +207,7 @@ export default function App() {
           }
         }}
       />
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} config={config} onSave={saveConfig} />
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} config={config} onSave={(next) => { setConfig(next); saveJson('ai_scraper_config', { ...next, version: 3 }); }} />
     </div>
   );
 }
