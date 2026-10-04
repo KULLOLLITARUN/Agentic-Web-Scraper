@@ -296,6 +296,8 @@ class Navigator:
             # Execute dynamic scrolling if requested
             if scroll and max_scrolls > 0:
                 await self._scroll_page(page, steps=max_scrolls, delay_ms=scroll_delay_ms)
+                # Some banners (Naukri's) only appear after a few seconds or on scroll.
+                await self._dismiss_cookie_banner(page)
 
             html: str = await page.content()
             self.last_screenshot = await self._screenshot(page) if screenshot else None

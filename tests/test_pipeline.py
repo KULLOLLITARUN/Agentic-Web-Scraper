@@ -1,3 +1,4 @@
+import json
 import asyncio
 
 import pytest
@@ -366,3 +367,34 @@ def test_no_screenshot_by_default(monkeypatch):
 
     assert calls[0]["screenshot"] is False
     assert not [e for e in events if e["type"] == "screenshot"]
+
+
+def names(prefix, n):
+    return json.dumps([{"name": f"{prefix}{i}"} for i in range(n)])
+
+
+TWO_PAGES = {"https://site.test/1": page_html("one", "/2"), "https://site.test/2": page_html("two")}
+
+
+def test_short_later_page_is_read_again_and_larger_result_kept(monkeypatch):
+    result, _ = run_pages(monkeypatch, TWO_PAGES, [names("a", 20), names("b", 3), names("c", 18)], max_pages=2)
+
+    assert result["items_count"] == 38
+    assert result["data"][20:] == [{"name": f"c{i}"} for i in range(18)]
+    assert result["warnings"] == []
+
+
+def test_page_still_short_after_second_read_gets_a_note(monkeypatch):
+    result, _ = run_pages(monkeypatch, TWO_PAGES, [names("a", 20), names("b", 3), names("c", 2)], max_pages=2)
+
+    assert result["items_count"] == 23  # the first read (3) beats the second (2)
+    assert len(result["warnings"]) == 1
+    assert result["warnings"][0].startswith("Page 2: Only 3 records here, while earlier pages had 20")
+
+
+def test_small_pages_are_not_reread(monkeypatch):
+    # Earlier pages under SHORT_PAGE_MIN records: a short page is normal, no extra call.
+    result, _ = run_pages(monkeypatch, TWO_PAGES, [names("a", 6), names("b", 1)], max_pages=2)
+
+    assert result["items_count"] == 7
+    assert result["warnings"] == []

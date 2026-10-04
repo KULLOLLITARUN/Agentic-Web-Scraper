@@ -11,6 +11,8 @@ const KINDS = [
     hint: 'Check the field types, or open the table to see which values.' },
   { id: 'cutoff', test: /cut off at|Only the first/, title: 'Page text cut off', tone: 'info',
     hint: 'Items further down may be missing.', action: 'settings' },
+  { id: 'short', test: /Only \d+ records here/, title: 'Fewer records than earlier pages', tone: 'warn',
+    hint: 'It was read twice; the page may be shorter, or some were missed.', action: 'rerun' },
   { id: 'stopped', test: /Stopped after page/, title: 'Stopped early', tone: 'warn',
     hint: 'A later page failed; the records from earlier pages are kept.' },
 ];

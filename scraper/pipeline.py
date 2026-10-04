@@ -19,6 +19,12 @@ from scraper.validator import SchemaMismatchError, Validator, ValidationError
 
 logger = logging.getLogger("ai_scraper")
 
+# A later page with fewer records than this share of the smallest earlier
+# page (when earlier pages had at least SHORT_PAGE_MIN each) is read once
+# more: on Naukri a weak retry once returned 3 of a page's 20 jobs.
+SHORT_PAGE_SHARE = 0.5
+SHORT_PAGE_MIN = 10
+
 
 class ScraperPipeline:
     """End-to-end scraping pipeline with agentic self-healing retries.
@@ -133,6 +139,7 @@ class ScraperPipeline:
         visited: set[str] = set()
         page_url: str | None = url
         pages_scraped = 0
+        page_counts: list[int] = []
 
         async with Navigator(headless=headless) as nav:
             while page_url and pages_scraped < max_pages:
@@ -140,9 +147,10 @@ class ScraperPipeline:
                 visited.add(page_url)
                 prefix = f"Page {page}: " if multi else ""
                 try:
+                    usual = min(page_counts) if page_counts and min(page_counts) >= SHORT_PAGE_MIN else None
                     data, raw_html, page_warnings = await self._scrape_page(
                         nav, page_url, page, max_pages, schema_description,
-                        expect_list, scroll, max_scrolls,
+                        expect_list, scroll, max_scrolls, usual=usual,
                     )
                 except Exception as e:
                     if page == 1:
@@ -155,6 +163,7 @@ class ScraperPipeline:
                     self._warn(warnings, prefix + message)
                 if expect_list:
                     items.extend(data)
+                    page_counts.append(len(data))
                 else:
                     single = data
                 self._emit(
@@ -194,8 +203,13 @@ class ScraperPipeline:
         expect_list: bool,
         scroll: bool,
         max_scrolls: int,
+        usual: int | None = None,
     ) -> tuple[Any, str, list[str]]:
-        """Fetch, distil and extract one page. Returns ``(data, raw_html, warnings)``."""
+        """Fetch, distil and extract one page. Returns ``(data, raw_html, warnings)``.
+
+        *usual* is the fewest records an earlier page had; a page coming back
+        with far fewer is read once more and the larger result kept.
+        """
         # ── Step 1: Fetch ────────────────────────────────────────────────────
         self._emit("step", step="fetch", page=page, max_pages=max_pages, url=url)
         logger.info(
@@ -247,10 +261,30 @@ class ScraperPipeline:
             return data, raw_html, warnings
 
         parts = split_text(cleaned)
-        if len(parts) == 1:
-            data = await self._extract(cleaned, schema_description, True, warnings)
-            return data, raw_html, warnings
-        return await self._extract_parts(parts, schema_description, warnings), raw_html, warnings
+
+        async def read(found_warnings: list[str]) -> list[Any]:
+            if len(parts) == 1:
+                return await self._extract(cleaned, schema_description, True, found_warnings)
+            return await self._extract_parts(parts, schema_description, found_warnings)
+
+        base = list(warnings)  # notes from fetching and distilling
+        data = await read(warnings)
+        if usual and len(data) < usual * SHORT_PAGE_SHARE:
+            logger.info("Only %d records (earlier pages had %d+); reading the page again.", len(data), usual)
+            second = list(base)
+            try:
+                again = await read(second)
+                if len(again) > len(data):
+                    data, warnings = again, second
+            except Exception as e:  # keep the first result
+                logger.warning("Second read failed: %s", e)
+            if len(data) < usual * SHORT_PAGE_SHARE:
+                warnings.append(
+                    f"Only {len(data)} records here, while earlier pages had {usual} or more, even after "
+                    "reading it twice. The page may really be shorter, or the model missed some; "
+                    "try running it again."
+                )
+        return data, raw_html, warnings
 
     async def _extract_parts(
         self,

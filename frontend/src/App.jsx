@@ -43,6 +43,7 @@ export default function App() {
   const [pane, setPane] = useState('found'); // phones: which panel is showing
   const [config, setConfig] = useState({ apiKey: '', model: '', backendUrl: 'http://localhost:8001', maxChars: 40000 });
   const [history, setHistory] = useState([]);
+  const [runCount, setRunCount] = useState(0); // every run ever started here, for 'No. 0042'
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const scrape = useScrape();
@@ -52,6 +53,8 @@ export default function App() {
     document.title = appTitle();
     const savedHistory = loadJson('ai_scraper_history');
     if (Array.isArray(savedHistory)) setHistory(savedHistory);
+    // History keeps only the last 25 runs, so the run number has its own counter.
+    setRunCount(Number(loadJson('ai_scraper_run_count')) || (Array.isArray(savedHistory) ? savedHistory.length : 0));
     const saved = loadJson('ai_scraper_config');
     if (saved) {
       // The old UI saved its placeholder model as if the user chose it; treat it as "auto".
@@ -87,6 +90,10 @@ export default function App() {
   const run = () => {
     if (!url.trim() || !request) return;
     const target = withScheme(url);
+    setRunCount((n) => {
+      saveJson('ai_scraper_run_count', n + 1);
+      return n + 1;
+    });
     const snapshot = { what, fields, useFields };
     scrape.run(
       { url: target, schema: request, ...options, backendUrl: config.backendUrl, model: config.model, apiKey: config.apiKey, maxChars: config.maxChars },
@@ -135,7 +142,7 @@ export default function App() {
   return (
     <div className="min-h-screen">
       <Header
-        runNumber={showPanes ? history.length + (state.status === 'running' ? 1 : 0) : null}
+        runNumber={showPanes && runCount ? runCount : null}
         onHome={() => scrape.reset()}
         onOpenHistory={() => setIsHistoryOpen(true)}
         historyCount={history.length}
