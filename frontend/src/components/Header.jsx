@@ -12,9 +12,9 @@ export default function Header({ runNumber, onHome, onOpenHistory, historyCount,
 
   return (
     <header className="sticky top-0 z-30 h-[54px] md:h-[58px] flex items-center gap-3 md:gap-4 px-4 md:px-7 bg-bg border-b border-line">
-      <button onClick={onHome} className="flex items-baseline gap-1.5 font-bold text-base tracking-tight whitespace-nowrap" aria-label="New scrape">
+      <button onClick={onHome} className="flex items-baseline font-bold text-base tracking-tight whitespace-nowrap" aria-label="Markpull: new scrape">
         <span className="marker font-serif italic font-normal text-[25px] leading-none">{APP_NAME.lead}</span>
-        {APP_NAME.rest}
+        <span className="ml-[6px]">{APP_NAME.rest}</span>
       </button>
       {runNumber != null && (
         <span className="hidden sm:inline-block font-mono text-xs px-2 py-0.5 border border-line2 rounded text-muted">

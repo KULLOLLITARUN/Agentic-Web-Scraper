@@ -1,9 +1,9 @@
 @echo off
-title AI Web Scraper - Launcher
+title Markpull - Launcher
 color 0E
 
 echo ==========================================================
-echo    AI WEB SCRAPER // PRECISION INSTRUMENT WORKBENCH
+echo    MARKPULL // AI WEB SCRAPER
 echo ==========================================================
 echo.
 
@@ -20,13 +20,13 @@ if not exist "%PYTHON_EXE%" (
 )
 
 echo [1/2] Starting FastAPI Backend on http://127.0.0.1:8001...
-start "AI Scraper - Backend API" cmd /k "color 0A && title AI Scraper Backend (8001) && %PYTHON_EXE% -m uvicorn api.main:app --host 127.0.0.1 --port 8001"
+start "Markpull - Backend API" cmd /k "color 0A && title Markpull Backend (8001) && %PYTHON_EXE% -m uvicorn api.main:app --host 127.0.0.1 --port 8001"
 
 timeout /t 2 /nobreak >nul
 
 echo [2/2] Starting Vite React UI on http://localhost:5173...
 cd /d "%~dp0frontend"
-start "AI Scraper - Frontend UI" cmd /k "color 0B && title AI Scraper UI (5173) && npm run dev"
+start "Markpull - App" cmd /k "color 0B && title Markpull App (5173) && npm run dev"
 
 timeout /t 2 /nobreak >nul
 

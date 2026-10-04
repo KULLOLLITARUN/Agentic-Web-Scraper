@@ -1,5 +1,5 @@
 """
-Rich CLI entrypoint for the AI Web Scraper.
+Rich CLI entrypoint for Markpull.
 
 Usage
 -----
@@ -58,10 +58,10 @@ def print_banner() -> None:
     """Print the application banner using a Rich Panel."""
     console.print(
         Panel(
-            "[bold]AI Web Scraper v1.0.0[/bold]\n"
+            "[bold]Markpull v1.0.0[/bold]\n"
             "[dim]Adaptive • Self-Healing • AI-Powered[/dim]",
             style="bold blue",
-            title="[yellow]⚡ AI Scraper[/yellow]",
+            title="[yellow]Markpull[/yellow]",
         )
     )
 
@@ -183,7 +183,7 @@ def main() -> None:
     installed console script.
     """
     parser = argparse.ArgumentParser(
-        description="AI Web Scraper - Adaptive, self-healing data extraction",
+        description="Markpull - structured data from any web page",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"

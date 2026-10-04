@@ -1,4 +1,4 @@
-# ⚡ AI Web Scraper — Architecture & AI Engineer Portfolio Guide
+# Markpull — Architecture & AI Engineer Portfolio Guide
 
 > **Project:** Autonomous Adaptive Web Extraction Pipeline with Agentic Self-Healing  
 > **Tech Stack:** Python 3.12 · Playwright · Groq (Qwen/LLaMA) · Pydantic v2 · FastAPI · React 18 · Tailwind CSS  

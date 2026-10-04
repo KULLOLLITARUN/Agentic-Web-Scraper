@@ -1,5 +1,5 @@
 """
-FastAPI REST server for the AI Web Scraper.
+FastAPI REST server for Markpull.
 
 Exposes endpoints for health-checking and triggering the adaptive
 scraping pipeline via HTTP POST requests.
@@ -71,8 +71,8 @@ logger = logging.getLogger(__name__)
 # FastAPI application
 # ---------------------------------------------------------------------------
 app = FastAPI(
-    title="AI Web Scraper",
-    description="Adaptive AI-powered web scraper that self-heals on layout changes",
+    title="Markpull API",
+    description="Markpull Scraper: structured data from any web page, described in plain words.",
     version="1.0.0",
 )
 
@@ -196,7 +196,7 @@ async def root() -> dict:
     """Return a simple status message confirming the API is live."""
     return {
         "status": "ok",
-        "message": "AI Web Scraper is running. POST to /scrape to extract data.",
+        "message": "Markpull is running. POST to /scrape to extract data.",
         "docs": "/docs",
     }
 

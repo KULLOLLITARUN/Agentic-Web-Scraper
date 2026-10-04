@@ -1,270 +1,193 @@
-# Agentic Web Scraper // Precision Instrument Workbench
+# Markpull
 
 <div align="center">
 
+**Markpull Scraper: point it at a web page, say what you want in plain words, get clean structured data back.**
+
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat&logo=fastapi&logoColor=white)
-![Playwright](https://img.shields.io/badge/Playwright-Headless-2EAD33?style=flat&logo=playwright&logoColor=white)
-![Groq](https://img.shields.io/badge/Groq%20LPU-Qwen%2027B-F55036?style=flat)
-![Pydantic](https://img.shields.io/badge/Pydantic-2.0-E92063?style=flat&logo=pydantic&logoColor=white)
+![Playwright](https://img.shields.io/badge/Playwright-Chromium-2EAD33?style=flat&logo=playwright&logoColor=white)
 ![React](https://img.shields.io/badge/React-18-61DAFB?style=flat&logo=react&logoColor=black)
-![TailwindCSS](https://img.shields.io/badge/Tailwind-3.4-06B6D4?style=flat&logo=tailwindcss&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-170%20passing-2EAD33?style=flat)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat)
 
-**An autonomous, self-healing web extraction system powered by Playwright, Groq LPUs, and Pydantic validation.**  
-*Extract structured data from modern dynamic React SPAs and static websites using plain English. Zero CSS selectors required.*
-
-[Architecture](#-core-architecture) •
-[Features](#-key-innovations) •
-[Quick Start](#-quick-start) •
-[Workbench UI](#-precision-instrument-workbench) •
-[Live Benchmarks](#-live-verification-benchmarks) •
-[Roadmap](#-enterprise-roadmap-1000-pages)
+[The name](#the-name) •
+[What it does](#what-it-does) •
+[How it works](#how-it-works) •
+[Quick start](#quick-start) •
+[API](#rest-api) •
+[Limits](#known-limits)
 
 </div>
 
 ---
 
-## 🛑 The Traditional Web Scraping Problem
+## The name
 
-Traditional scrapers (Scrapy, BeautifulSoup, Selenium, Puppeteer) rely on **rigid CSS selectors and brittle XPath expressions**:
+**Markpull** = **mark** + **pull**, the two things the app does with every page:
 
-```python
-# Fragile legacy code:
-price = soup.select_one("div.product-card > div._34h7-bold > span.price-value").text
+1. **Mark.** While it reads a page, Markpull shows you a picture of that page and *marks* each record it found with a highlighter stroke, numbered No. 01, No. 02… so you can see exactly where every row of your data came from.
+2. **Pull.** It *pulls* those records out as clean, typed data: cards, a table, JSON, CSV or Excel.
+
+The highlighter is the whole visual identity: the logo's "Mark" sits on a yellow stroke, and the same stroke is drawn over each record on the page.
+
+Written as one word with a capital M: **Markpull** (said "mark-pull"). In page titles and search listings it carries a plain description: *Markpull Scraper* or *Markpull, AI web scraper*.
+
+---
+
+## What it does
+
+Type a sentence: **From** `books.toscrape.com` **get** `every book with its title, price, star rating and stock`, and press Run.
+
+- **Plain words or exact fields.** Describe what you want, or define typed fields (`price (number)`, `in_stock (yes/no)`, `tags (list)`). Typed values are checked, and wrong ones are asked for again.
+- **See where each record came from.** A screenshot of the page with every record marked and numbered. Hover or click a record to jump to it on the page; records that couldn't be placed say so.
+- **Open the real item.** Each record gets an *open ↗* link to its own page (the product, story or listing), taken from the page itself, not guessed by the model.
+- **Pages that move.** JavaScript-heavy sites are rendered in Chromium; the page is scrolled for lazy content, cookie banners are dismissed, and *Load more* / *Show more* buttons are pressed (up to 3 times by default).
+- **Many pages.** Follow "next page" links for up to 10 pages and get one combined list.
+- **Long pages.** Long text is read in overlapping parts and merged. If the model stops before the end of a list (it can skip a run of look-alike items), the rest of the page is read again.
+- **Work with the results.** Filter and sort any field; export CSV, Excel (.xlsx) or JSON. Exports follow the filter and sort.
+- **Come back to it.** Run history (last 25 runs) and saved requests you can run again in one click, both kept in your browser.
+- **Honest about gaps.** Notes say when text was cut off, the model's reply hit its length limit, a backup model answered, or a page came back with far fewer records than the others.
+
+It works on any kind of list: products, stories, quotes, listings, tables, search results.
+
+---
+
+## How it works
+
+```
+ URL + "what to get"
+        │
+        ▼
+ 1. Navigator   Playwright Chromium: render, dismiss cookie banners, scroll,
+                press "Load more", screenshot + element layout
+        │
+        ▼
+ 2. Distiller   HTML → plain text (scripts, nav, footers, SVG removed;
+                links kept only when you ask for them)
+        │
+        ▼
+ 3. Brain       LLM extraction to JSON; long pages in overlapping parts;
+                rest-of-page read when the list was cut short
+        │
+        ▼
+ 4. Validator   parse / repair JSON, check typed fields; on failure the exact
+                problems go back to the model (up to 3 attempts)
+        │
+        ▼
+ 5. Locate      match each record to a repeated block on the page (3+
+                same-width siblings) for its mark and its open ↗ link
+        │
+        ▼
+ results + marks, streamed to the UI as they happen
 ```
 
-The moment a website updates its UI design, introduces dynamic obfuscated class names (`styles_splScrn__C8kSD`), or migrates to a client-side Single Page App (React/Next.js), **traditional scrapers break completely**. Engineers spend countless hours writing and maintaining brittle selectors.
+The model provider sits behind one module (`scraper/brain.py`). Today it's Groq (`openai/gpt-oss-120b`, with smaller backups); a short per-minute rate limit is waited out on the main model, and only longer limits fall back.
 
 ---
 
-## 💡 The Agentic Solution
+## Quick start
 
-This system replaces rigid selectors with **visual and semantic reasoning**:
-1. You describe the data you want in **plain English** (e.g., *"Each job: title, company, salary, experience, skills"*).
-2. The headless browser renders the page, executes client-side JavaScript, and dynamically scrolls to hydrate lazy elements.
-3. An **HTML Distillation Engine** compresses the DOM by **85–97%** in under 8ms.
-4. An **autonomous Groq LPU LLM (`qwen/qwen3.8-27b`)** identifies entities by semantic context rather than class names.
-5. A deterministic **Pydantic Self-Healing Validator** audits the output. If a schema drift or type clash occurs, it automatically feeds the validation diff back to the LLM to self-correct in real time.
-
----
-
-## 🏗️ Core Architecture
-
-```
-┌─────────────────────┐
-│ 1. BROWSER NAVIGATOR│  Playwright (Chrome Channel)
-│  (Headless Engine)  │  • Full client-side JavaScript rendering
-└──────────┬──────────┘  • Dynamic auto-scroll & lazy-load hydration
-           │ Rendered DOM
-           ▼
-┌─────────────────────┐
-│ 2. HTML DISTILLER   │  BeautifulSoup + LXML
-│  (Token Optimizer)  │  • Strips 12+ noisy structural tags (<svg>, <nav>, etc.)
-└──────────┬──────────┘  • 85–97% payload reduction in <8ms
-           │ Cleaned Semantic Text
-           ▼
-┌─────────────────────┐
-│ 3. COGNITIVE BRAIN  │  Groq LPUs (qwen/qwen3.8-27b)
-│    (LLM Parser)     │  • Zero CSS selectors; plain English mapping
-└──────────┬──────────┘  • Entity disambiguation & array extraction
-           │ Extracted JSON
-           ▼
-┌─────────────────────┐
-│ 4. SELF-HEALING     │  Deterministic Pydantic Engine
-│      VALIDATOR      │  • Enforces schema, types, & non-empty payloads
-└──────────┬──────────┘
-           │
-           ├── Passed? ────────► [ Deliver Clean Data to UI / API ]
-           │
-           └── Failed? ────────► [ Autonomous Feedback Loop ]
-                                 "Item 2: expected float, got string. Fix and retry."
-                                 (Re-invokes Brain up to max_retries)
-```
-
----
-
-## ✨ Key Innovations
-
-### 1. Zero CSS Selectors
-Never inspect element trees or copy XPaths again. Define your target data schema conversationally:
-```text
-Each job: title (string), company (string), salary (string), location (string), skills (list of strings)
-```
-
-### 2. High-Ratio HTML Distillation Engine
-Sending 500KB of raw HTML (SVGs, inline styles, navigation links, tracking scripts) directly to an LLM exhausts token budgets and spikes latency. The built-in Distiller cleans the DOM down to essential content, cutting payload sizes by up to **97%** and reducing Groq inference time to **1–2 seconds**.
-
-### 3. Agentic Self-Healing Loop
-Unlike brittle scripts that throw exceptions when a site changes, the pipeline implements an autonomous feedback loop:
-* **Layer 1:** Strips markdown tags and AI chain-of-thought `<think>` blocks.
-* **Layer 2:** Validates root array structural integrity.
-* **Layer 3:** Discards ghost / empty hallucinations.
-* **Layer 4:** Enforces strict Pydantic type specifications. If an error occurs, it formats the exact diff and re-prompts the model until valid.
-
-### 4. Headless Rendering for Modern SPAs
-* Runs fully headless, rendering client-side JavaScript before extraction.
-* Avoids global `Accept` header conflicts, preserving background client-side AJAX/JSON calls for modern React, Vue, and Next.js applications.
-
----
-
-## 📊 Live Verification Benchmarks
-
-| Target Website | Page Complexity | Natural Language Schema | Verification Result |
-| :--- | :--- | :--- | :--- |
-| **Quotes to Scrape** | Static Server HTML | *"Each quote: text, author, tags"* | ✅ **10 quotes**, 0 retries, 85% compression |
-| **Apple Inc.** | Enterprise E-Commerce | *"Find all phones, slogans, and prices"* | ✅ **6 models extracted** with Indian Rupee (`₹`) prices |
-| **Y Combinator** | Real-time Job Directory | *"Find AI roles: company, title"* | ✅ **30 jobs extracted** in a single pass |
-
----
-
-## 🖥️ Precision Instrument Workbench
-
-The system includes a dark industrial desktop workbench built with **React 18, Vite, and Tailwind CSS**:
-
-* **Control Deck:** Target URL input, conversational schema editor with line numbering, retries slider, auto-scroll depth selector, and browser mode switch.
-* **Real-time Pipeline Tracker:** Visual stepper monitoring `FETCH` → `DISTILL` → `INFER` → `VALIDATE` phases.
-* **Dual Output Inspector:** Switch seamlessly between raw validated JSON and interactive data table views.
-* **Live Telemetry:** Tracks DOM reduction ratios, elapsed wall-clock latency, and self-healing log events.
-* **Export Options:** Download results as formatted JSON or standard CSV.
-
----
-
-## 🚀 Quick Start
-
-### 1. Prerequisites
-* **Python 3.10+** (Tested on Python 3.12)
-* **Node.js 18+** (For frontend workbench)
-* **Google Chrome** installed locally
-
-### 2. Clone & Setup
+**Needs:** Python 3.10+ (tested on 3.12), Node.js 18+, a free [Groq API key](https://console.groq.com/keys).
 
 ```bash
 git clone https://github.com/KULLOLLITARUN/Agentic-Web-Scraper.git
 cd Agentic-Web-Scraper
 
-# Install Python dependencies
 pip install -r requirements.txt
-
-# Install Playwright browser binaries
 playwright install chromium
+
+cd frontend && npm install && cd ..
+cp .env.example .env      # then put your key in GROQ_API_KEY
 ```
 
-### 3. Configure API Key
-Create a `.env` file in the root directory:
-```bash
-cp .env.example .env
-```
-Add your free Groq API key:
-```env
-GROQ_API_KEY=gsk_your_groq_api_key_here
-GROQ_MODEL=qwen/qwen3.8-27b
-```
+On Windows, run `start.bat`. It opens two windows:
 
-The API only accepts browser requests from `localhost` / `127.0.0.1` (any port). If you host the frontend elsewhere, list its address in `.env`:
-```env
-CORS_ORIGINS=https://scraper.example.com
-```
+- **Backend:** `http://127.0.0.1:8001` (API docs at `/docs`)
+- **App:** `http://localhost:5173`
 
-### 4. Launch Workbench (One-Click)
+Port 8001 is used so the backend doesn't clash with other local apps on 8000. The API accepts browser requests from `localhost` / `127.0.0.1` on any port; to host the app elsewhere, list its address in `.env` as `CORS_ORIGINS=https://your-site.example`.
 
-On Windows, double-click or run:
-```cmd
-start.bat
-```
-This automatically starts:
-* **FastAPI Backend:** `http://127.0.0.1:8001` (API Docs: `http://127.0.0.1:8001/docs`)
-* **Vite React UI:** `http://localhost:5173`
+Run the tests with `py -m pytest -q`.
 
 ---
 
-## 📡 REST API Usage
-
-Trigger the scraper directly via `cURL` or any HTTP client:
+## REST API
 
 ```bash
 curl -X POST "http://127.0.0.1:8001/scrape" \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://quotes.toscrape.com",
-    "schema_description": "Each quote: text (string), author (string), tags (list of strings)",
-    "max_retries": 3,
-    "expect_list": true,
-    "scroll": true,
-    "max_scrolls": 5,
-    "headless": true
+    "schema_description": "Each quote: text (string), author (string), tags (list of strings)"
   }'
 ```
 
-### Response Example:
 ```json
 {
   "success": true,
   "url": "https://quotes.toscrape.com",
   "items_count": 10,
   "data": [
-    {
-      "text": "The world as we have created it is a process of our thinking...",
-      "author": "Albert Einstein",
-      "tags": ["change", "deep-thoughts", "thinking", "world"]
-    }
+    { "text": "The world as we have created it is a process of our thinking…", "author": "Albert Einstein", "tags": ["change", "deep-thoughts", "thinking", "world"] }
   ],
-  "elapsed_seconds": 1.48,
+  "elapsed_seconds": 4.1,
   "pages_scraped": 1,
   "error": null,
   "warnings": []
 }
 ```
 
-`warnings` lists reasons the data may be incomplete, e.g. the page text was longer than `max_chars` or the model's output was cut off. Optional request fields: `max_pages` (see below), `model` (preferred Groq model), `api_key` (overrides `GROQ_API_KEY`) and `max_chars` (total page text read, default 40,000; pages longer than 12,000 characters are sent to the model in overlapping parts and the items merged).
+Optional fields:
 
-### Multiple pages
+| Field | Default | What it does |
+|---|---|---|
+| `expect_list` | `true` | `false` for one record |
+| `max_pages` | `1` | follow "next page" links, up to 10 |
+| `scroll` / `max_scrolls` | `true` / `5` | scroll for lazy-loaded content |
+| `load_more` | `3` | press a "Load more" button up to N times (0 = never) |
+| `max_retries` | `3` | attempts when typed fields don't match |
+| `max_chars` | `40000` | page text read in total (long pages go in parts) |
+| `headless` | `true` | `false` shows the browser window |
+| `api_key` | from `.env` | use another key for this request |
 
-Set `"max_pages": 10` to follow "next page" links (`rel="next"`, a `.next` pager, or a link labelled Next/More) and combine the items from every page. Scraping stops early when a page has no next link. If a later page fails, the items already collected are returned with a warning. From the CLI:
+**Streaming.** `POST /scrape/stream` takes the same body and returns one JSON event per line as the run goes: `step`, `retry`, `part_done`, `loaded_more`, `page_done`, `warning`, `screenshot`, `highlights`, then `result` or `error`. The app is built on this. Closing the connection stops the run.
+
+**CLI.**
 
 ```bash
 python cli.py https://quotes.toscrape.com -s "Each quote: text (string), author (string)" --pages 10 -o quotes.json
 ```
 
-### Streaming progress
+---
 
-`POST /scrape/stream` takes the same body and returns newline-delimited JSON, one event per line, as the pipeline runs. The Workbench uses this to drive its progress tracker.
+## Checked on real sites
 
-```bash
-curl -N -X POST "http://127.0.0.1:8001/scrape/stream" \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://quotes.toscrape.com", "schema_description": "Each quote: text (string), author (string)"}'
-```
-
-```json
-{"type": "step", "step": "fetch"}
-{"type": "step", "step": "distill", "html_chars": 10968}
-{"type": "step", "step": "infer", "text_chars": 1629, "attempt": 1, "max_attempts": 3}
-{"type": "step", "step": "validate", "attempt": 1, "max_attempts": 3}
-{"type": "step", "step": "done"}
-{"type": "result", "success": true, "items_count": 10, "data": [...], "warnings": [], ...}
-```
-
-A failed validation emits `{"type": "retry", "attempt": 1, "error": "..."}` before the next attempt. A failed scrape ends with `{"type": "error", "step": "fetch", "message": "..."}`. Closing the connection cancels the scrape.
+| Site | Kind of page | Result |
+|---|---|---|
+| Books to Scrape | product grid | 20 of 20 books; each marked on the page with its own book link |
+| Hacker News | ranked list | 30 of 30 stories; every *open ↗* matches the story's link |
+| Quotes to Scrape | static list | 10 quotes with tags |
+| scrapingcourse.com (button page) | "Load more" list | 48 products after 3 presses (12 without) |
+| Naukri job search | JavaScript app with cookie banners | full page of jobs; marks on each job card |
 
 ---
 
-## 🗺️ Enterprise Roadmap (1,000+ Pages)
+## Known limits
 
-For high-scale scraping across thousands of pages, the system architecture supports the following extensions:
-
-1. **Distributed Asynchronous Workers:** Decouple crawling from web sockets using Celery / Redis task queues.
-2. **Chunked Database Streaming:** Stream records directly into PostgreSQL / SQLite per page to guarantee zero data loss.
-3. **Hybrid Extraction Engine:** Use Groq LLM on Page 1 to infer layout structure, then switch to compiled pure-Python extractors for Pages 2–1,000 (**99% token cost reduction at 0.01s/page**).
-
----
-
-## ⚖️ Responsible Use
-
-Only scrape sites you are permitted to access. Respect each site's terms of service, `robots.txt` and rate limits, and do not use this tool to collect personal data without a lawful basis.
+- **Free model quota.** The free Groq tier allows about 200k tokens a day for the main model, roughly 20 long pages. After that a smaller backup answers and finds fewer items; the app says "backup model used" when that happens.
+- **History has no pictures.** Past runs reopen with their data, not the page screenshot.
+- **Kept per browser.** History and saved requests live in the browser you used.
+- **Sites that block bots** may need "show browser window" (advanced) or may not work at all.
 
 ---
 
-## 📄 License
+## Responsible use
 
-Distributed under the **MIT License**. See `LICENSE` for more information.
+Only scrape sites you're allowed to. Respect each site's terms, `robots.txt` and rate limits, and don't collect personal data without a lawful basis.
+
+---
+
+## License
+
+MIT. See `LICENSE`.

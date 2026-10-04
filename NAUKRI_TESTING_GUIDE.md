@@ -1,6 +1,6 @@
 # Naukri Live Extraction & Testing Guide
 
-This document records the exact live verification tests, prompt schemas, technical root causes, and verification results for scraping dynamic single-page applications (SPAs) like **Naukri.com** using the AI Web Scraper.
+This document records the exact live verification tests, prompt schemas, technical root causes, and verification results for scraping dynamic single-page applications (SPAs) like **Naukri.com** using Markpull.
 
 ---
 

@@ -1,6 +1,6 @@
-﻿# Start Script for AI Web Scraper Precision Workbench
+﻿# Start script for Markpull
 Write-Host "==========================================================" -ForegroundColor DarkYellow
-Write-Host "   AI WEB SCRAPER // PRECISION INSTRUMENT WORKBENCH       " -ForegroundColor Yellow
+Write-Host "   MARKPULL // AI WEB SCRAPER       " -ForegroundColor Yellow
 Write-Host "==========================================================" -ForegroundColor DarkYellow
 
 $ROOT_DIR = $PSScriptRoot
