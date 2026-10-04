@@ -115,6 +115,10 @@ class ScrapeRequest(BaseModel):
         default=True,
         description="If False, launches visible Chrome to bypass Akamai/Cloudflare WAFs (e.g. for Naukri).",
     )
+    screenshots: bool = Field(
+        default=True,
+        description="Stream a JPEG of each page's top as a 'screenshot' event (/scrape/stream only).",
+    )
     max_pages: int = Field(
         default=1,
         ge=1,
@@ -300,6 +304,7 @@ async def _run_scrape(pipeline: ScraperPipeline, request: ScrapeRequest, start: 
         headless=request.headless,
         on_event=on_event,
         max_pages=request.max_pages,
+        screenshots=request.screenshots and on_event is not None,
     )
     return ScrapeResponse(
         success=True,

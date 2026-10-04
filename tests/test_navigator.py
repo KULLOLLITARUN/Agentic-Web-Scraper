@@ -48,3 +48,21 @@ def test_page_without_banner_is_fast():
     clicked, elapsed = asyncio.run(clicked_after_dismiss("<main><p>Just content</p></main>"))
     assert clicked == ""
     assert elapsed < 1.0
+
+
+def test_screenshot_is_a_jpeg_of_the_page_top():
+    from scraper.navigator import SCREENSHOT_MAX_HEIGHT
+
+    async def shoot():
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page(viewport={"width": 800, "height": 600})
+            await page.set_content('<div style="height:5000px;background:#eee">tall page</div>')
+            shot = await Navigator()._screenshot(page)
+            await browser.close()
+            return shot
+
+    shot = asyncio.run(shoot())
+    assert shot["jpeg"][:2] == b"\xff\xd8"  # JPEG magic number
+    assert shot["width"] == 800
+    assert shot["height"] == SCREENSHOT_MAX_HEIGHT

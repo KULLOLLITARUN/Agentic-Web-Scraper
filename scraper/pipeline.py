@@ -6,6 +6,7 @@ with an agentic self-healing retry loop, optionally across several pages.
 """
 
 import asyncio
+import base64
 import logging
 from typing import Any, Callable
 
@@ -49,6 +50,7 @@ class ScraperPipeline:
         #: The step currently running (fetch, distill, infer, validate, done).
         self.step = "idle"
         self._on_event: Callable[[dict[str, Any]], None] | None = None
+        self._screenshots = False
 
     def _emit(self, event_type: str, **fields: Any) -> None:
         """Report progress to the ``on_event`` callback, if one was given."""
@@ -72,6 +74,7 @@ class ScraperPipeline:
         headless: bool = True,
         on_event: Callable[[dict[str, Any]], None] | None = None,
         max_pages: int = 1,
+        screenshots: bool = False,
     ) -> dict[str, Any]:
         """Fetch *url*, extract data matching *schema_description*, and return it.
 
@@ -120,6 +123,7 @@ class ScraperPipeline:
                 with a warning instead, keeping the items found so far.
         """
         self._on_event = on_event
+        self._screenshots = screenshots
         max_pages = max_pages if expect_list else 1
         multi = max_pages > 1
 
@@ -202,7 +206,17 @@ class ScraperPipeline:
             scroll,
             max_scrolls,
         )
-        raw_html: str = await nav.fetch(url, scroll=scroll, max_scrolls=max_scrolls)
+        raw_html: str = await nav.fetch(url, scroll=scroll, max_scrolls=max_scrolls, screenshot=self._screenshots)
+        shot = getattr(nav, "last_screenshot", None) if self._screenshots else None
+        if shot:
+            # Shown in the UI next to the results; never stored in the result.
+            self._emit(
+                "screenshot",
+                page=page,
+                width=shot["width"],
+                height=shot["height"],
+                image="data:image/jpeg;base64," + base64.b64encode(shot["jpeg"]).decode("ascii"),
+            )
 
         # ── Step 2: Distil ───────────────────────────────────────────────────
         logger.info("[2/5] Distiller: Cleaning HTML (%d chars raw)", len(raw_html))

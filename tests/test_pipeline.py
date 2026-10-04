@@ -327,3 +327,42 @@ def test_single_record_reads_only_the_first_part(monkeypatch):
     assert "part" not in calls[0]
     assert len(calls[0]["cleaned_text"]) == 12_000
     assert result["warnings"][0].startswith("Only the first 12,000")
+
+
+def test_streams_a_screenshot_event_when_asked(monkeypatch):
+    calls = []
+
+    async def fetch(self, url, **kwargs):
+        calls.append(kwargs)
+        self.last_screenshot = {"jpeg": b"\xff\xd8jpeg", "width": 1920, "height": 1200}
+        return PAGE
+
+    monkeypatch.setattr(FakeNavigator, "fetch", fetch)
+    p = ScraperPipeline(api_key="test-key")
+    p._brain = FakeBrain(['[{"name": "Item one"}]'])
+    events = []
+    result = asyncio.run(p.run("https://example.com", "name (string)", on_event=events.append, screenshots=True))
+
+    shots = [e for e in events if e["type"] == "screenshot"]
+    assert calls[0]["screenshot"] is True
+    assert len(shots) == 1
+    assert shots[0]["page"] == 1 and shots[0]["width"] == 1920 and shots[0]["height"] == 1200
+    assert shots[0]["image"].startswith("data:image/jpeg;base64,")
+    assert "image" not in str(result)
+
+
+def test_no_screenshot_by_default(monkeypatch):
+    calls = []
+
+    async def fetch(self, url, **kwargs):
+        calls.append(kwargs)
+        return PAGE
+
+    monkeypatch.setattr(FakeNavigator, "fetch", fetch)
+    p = ScraperPipeline(api_key="test-key")
+    p._brain = FakeBrain(['[{"name": "Item one"}]'])
+    events = []
+    asyncio.run(p.run("https://example.com", "name (string)", on_event=events.append))
+
+    assert calls[0]["screenshot"] is False
+    assert not [e for e in events if e["type"] == "screenshot"]

@@ -96,6 +96,11 @@ COOKIE_LABEL_RE = re.compile(
 SETTLE_MS_AFTER_IDLE = 500
 SETTLE_MS_STILL_BUSY = 3500
 
+# Page screenshots for the UI: the top of the page only (a long feed can be
+# 20,000 px tall), as a JPEG small enough to stream (~150-400 KB).
+SCREENSHOT_MAX_HEIGHT = 2400
+SCREENSHOT_QUALITY = 55
+
 
 class Navigator:
     """Async context manager that drives a stealth headless Chromium browser via Playwright.
@@ -116,6 +121,8 @@ class Navigator:
         self.headless = headless
         self._playwright = None
         self._browser: Browser | None = None
+        #: Set by :meth:`fetch` when ``screenshot=True``; see :meth:`_screenshot`.
+        self.last_screenshot: dict | None = None
 
     async def __aenter__(self) -> "Navigator":
         """Start the Playwright engine and launch Chromium with stealth settings."""
@@ -189,6 +196,30 @@ class Navigator:
         except Exception:
             pass
 
+    async def _screenshot(self, page: Page) -> dict | None:
+        """JPEG of the page's top (up to SCREENSHOT_MAX_HEIGHT px), or None if it fails.
+
+        Returns ``{"jpeg": bytes, "width": int, "height": int}``. Taken after
+        scrolling, back at the top, so lazy images are loaded.
+        """
+        try:
+            await page.evaluate("window.scrollTo(0, 0)")
+            size = await page.evaluate(
+                "({w: document.documentElement.clientWidth, h: document.documentElement.scrollHeight})"
+            )
+            width = int(size["w"]) or 1920
+            height = max(1, min(int(size["h"]), SCREENSHOT_MAX_HEIGHT))
+            jpeg = await page.screenshot(
+                type="jpeg",
+                quality=SCREENSHOT_QUALITY,
+                full_page=True,
+                clip={"x": 0, "y": 0, "width": width, "height": height},
+            )
+            return {"jpeg": jpeg, "width": width, "height": height}
+        except Exception as e:  # a missing screenshot must never fail the scrape
+            logger.warning("Screenshot failed: %s", e)
+            return None
+
     async def fetch(
         self,
         url: str,
@@ -196,6 +227,7 @@ class Navigator:
         max_scrolls: int = 5,
         scroll_delay_ms: int = 800,
         timeout_ms: int = 30_000,
+        screenshot: bool = False,
     ) -> str:
         """Fetch a URL and return the full rendered DOM HTML with stealth and dynamic scrolling.
 
@@ -214,6 +246,8 @@ class Navigator:
             max_scrolls: Number of dynamic scroll steps (default 5).
             scroll_delay_ms: Milliseconds to pause between scroll increments (default 800).
             timeout_ms: Maximum navigation timeout in milliseconds (default 30,000).
+            screenshot: Also capture the top of the rendered page as a JPEG
+                into :attr:`last_screenshot` (for showing it in the UI).
 
         Returns:
             The rendered HTML content as a string.
@@ -264,6 +298,7 @@ class Navigator:
                 await self._scroll_page(page, steps=max_scrolls, delay_ms=scroll_delay_ms)
 
             html: str = await page.content()
+            self.last_screenshot = await self._screenshot(page) if screenshot else None
         finally:
             await context.close()
 
