@@ -1,5 +1,7 @@
-function download(filename, text, type) {
-  const blob = new Blob([text], { type });
+import { buildXlsx } from './xlsx';
+
+function download(filename, content, type) {
+  const blob = new Blob([content], { type });
   const href = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = href;
@@ -35,6 +37,15 @@ export function downloadCsv(data) {
   };
   const csv = [cols.map(cell).join(','), ...rows.map((r) => cols.map((c) => cell(r?.[c])).join(','))].join('\n');
   download(`scrape-${stamp()}.csv`, csv, 'text/csv;charset=utf-8');
+}
+
+export function downloadXlsx(data) {
+  const rows = toRows(data);
+  if (!rows.length) return;
+  // A list of plain values (not objects) becomes one "value" column.
+  const objects = rows.every((r) => r && typeof r === 'object' && !Array.isArray(r));
+  const sheetRows = objects ? rows : rows.map((value) => ({ value }));
+  download(`scrape-${stamp()}.xlsx`, buildXlsx(sheetRows, columnsOf(sheetRows)), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
 
 export function downloadJson(data) {
