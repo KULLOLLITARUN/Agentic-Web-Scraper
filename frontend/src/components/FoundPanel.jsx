@@ -3,6 +3,7 @@ import { Check, Copy, Download, FileJson } from 'lucide-react';
 import { fadeUp, motion } from '../lib/motion';
 import { columnsOf, downloadCsv, downloadJson, fillRate, toRows } from '../lib/export';
 import { groupNotes } from '../lib/notes';
+import { nextSort, view as viewRows } from '../lib/view';
 import { STEPS } from '../lib/useScrape';
 import { NumberTicker } from './ui';
 import { PRESETS } from './Composer';
@@ -171,6 +172,13 @@ function Results({ state, onRerun, onOpenSettings, focus, onFocus, onPick }) {
   const tkey = useMemo(() => titleKey(cols, rows), [cols, rows]);
   const [view, setView] = useState(rows.length > 20 ? 'table' : 'cards');
   const [copied, setCopied] = useState(false);
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState(null); // { key, dir: 1 | -1 } or page order
+  const shown = useMemo(() => viewRows(rows, query, sort), [rows, query, sort]);
+  const narrowed = Array.isArray(result.data) && (query.trim() || sort);
+  // Export, copy and JSON give what's on screen: filtered and in this order.
+  const data = narrowed ? shown.map((e) => e.row) : result.data;
+  const numeric = (key) => rows.some((r) => typeof r?.[key] === 'number');
   const listRef = useRef(null);
   const notes = groupNotes(result.warnings);
   const located = Object.values(state.marks || {}).some((boxes) => boxes.length);
@@ -195,21 +203,25 @@ function Results({ state, onRerun, onOpenSettings, focus, onFocus, onPick }) {
       : { onClick: () => { onFocus(null); setMissed(i); } };
   const fill = fillRate(result.data);
 
-  useEffect(() => setView(rows.length > 20 ? 'table' : 'cards'), [result]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setView(rows.length > 20 ? 'table' : 'cards');
+    setQuery('');
+    setSort(null);
+  }, [result]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const items = listRef.current?.querySelectorAll('[data-row]');
     if (items?.length) fadeUp(Array.from(items).slice(0, 24), { step: 30, distance: 8 });
-  }, [result, view]);
+  }, [result, view, sort]);
 
   const copy = () => {
-    navigator.clipboard.writeText(JSON.stringify(result.data, null, 2));
+    navigator.clipboard.writeText(JSON.stringify(data, null, 2));
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
   const actions = (
     <>
-      <button onClick={() => downloadCsv(result.data)} className="btn-primary"><Download size={15} /> Export CSV</button>
-      <button onClick={() => downloadJson(result.data)} className="btn-outline"><FileJson size={15} /> JSON</button>
+      <button onClick={() => downloadCsv(data)} className="btn-primary"><Download size={15} /> Export CSV</button>
+      <button onClick={() => downloadJson(data)} className="btn-outline"><FileJson size={15} /> JSON</button>
       <button onClick={copy} className="btn-outline">{copied ? <Check size={15} className="text-ok" /> : <Copy size={15} />} {copied ? 'Copied' : 'Copy'}</button>
     </>
   );
@@ -249,10 +261,36 @@ function Results({ state, onRerun, onOpenSettings, focus, onFocus, onPick }) {
         </span>
       </div>
 
+      {rows.length > 1 && cols.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-2.5">
+          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter records…" aria-label="Filter records"
+            className="flex-1 min-w-[150px] h-8 px-2.5 bg-surface border border-line2 rounded-md text-[13px] outline-none focus:border-fg placeholder:text-faint" />
+          <label className="inline-flex items-center gap-1.5 text-xs text-muted">
+            sort
+            <select value={sort?.key || ''} onChange={(e) => setSort(e.target.value ? { key: e.target.value, dir: sort?.dir || 1 } : null)}
+              className="h-8 px-1.5 bg-surface border border-line2 rounded-md text-[13px] text-fg outline-none focus:border-fg">
+              <option value="">page order</option>
+              {cols.map((c) => <option key={c} value={c}>{label(c)}</option>)}
+            </select>
+          </label>
+          {sort && (
+            <button onClick={() => setSort({ ...sort, dir: -sort.dir })} className="h-8 px-2.5 bg-surface border border-line2 rounded-md text-xs font-mono hover:border-fg" title="Reverse the order">
+              {numeric(sort.key) ? (sort.dir === 1 ? 'low → high' : 'high → low') : sort.dir === 1 ? 'A → Z' : 'Z → A'}
+            </button>
+          )}
+          {query.trim() && <span className="text-xs text-faint font-mono">{shown.length} of {rows.length}</span>}
+        </div>
+      )}
+
       <div ref={listRef} className="md:max-h-[calc(100vh-470px)] md:min-h-[280px] md:overflow-auto">
+        {query.trim() && !shown.length && (
+          <div className="border border-dashed border-line2 rounded px-4 py-6 text-center text-sm text-muted">
+            Nothing matches “{query.trim()}”. <button onClick={() => setQuery('')} className="underline underline-offset-2">Clear the filter</button>
+          </div>
+        )}
         {view === 'cards' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-px">
-            {rows.map((row, i) => <Card key={i} row={row} i={i} cols={cols} tkey={tkey} focused={focus === i} link={link(i)} url={itemUrl(row, hrefs[i])} missed={missed === i} />)}
+            {shown.map(({ row, i }) => <Card key={i} row={row} i={i} cols={cols} tkey={tkey} focused={focus === i} link={link(i)} url={itemUrl(row, hrefs[i])} missed={missed === i} />)}
           </div>
         )}
         {view === 'table' && (
@@ -261,11 +299,17 @@ function Results({ state, onRerun, onOpenSettings, focus, onFocus, onPick }) {
               <thead>
                 <tr>
                   <th className="sticky top-0 bg-surface text-left font-medium text-xs text-faint px-2.5 py-2 border-b border-fg">No.</th>
-                  {cols.map((c) => <th key={c} className="sticky top-0 bg-surface text-left font-medium text-xs text-faint px-2.5 py-2 border-b border-fg whitespace-nowrap">{label(c)}</th>)}
+                  {cols.map((c) => (
+                    <th key={c} aria-sort={sort?.key === c ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'} className="sticky top-0 bg-surface text-left font-medium text-xs text-faint px-2.5 py-2 border-b border-fg whitespace-nowrap">
+                      <button onClick={() => setSort(nextSort(sort, c))} className={`hover:text-fg ${sort?.key === c ? 'text-fg' : ''}`} title="Sort by this column">
+                        {label(c)} <span className="font-mono">{sort?.key === c ? (sort.dir === 1 ? '↑' : '↓') : ''}</span>
+                      </button>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => (
+                {shown.map(({ row, i }) => (
                   <tr key={i} data-row data-i={i} {...link(i)} className={`cursor-pointer ${focus === i ? 'bg-hl/30' : missed === i ? 'bg-pencil/[.07]' : 'hover:bg-pencil/[.05]'}`}>
                     <td className="px-2.5 py-2 border-b border-line font-mono text-faint align-top whitespace-nowrap">
                       {pad(i)}
@@ -278,7 +322,7 @@ function Results({ state, onRerun, onOpenSettings, focus, onFocus, onPick }) {
             </table>
           </div>
         )}
-        {view === 'json' && <pre className="m-0 bg-surface border border-line p-3 font-mono text-xs leading-relaxed overflow-auto">{JSON.stringify(result.data, null, 2)}</pre>}
+        {view === 'json' && <pre className="m-0 bg-surface border border-line p-3 font-mono text-xs leading-relaxed overflow-auto">{JSON.stringify(data, null, 2)}</pre>}
       </div>
 
       <div className="hidden md:flex gap-2 mt-3.5">{actions}</div>
