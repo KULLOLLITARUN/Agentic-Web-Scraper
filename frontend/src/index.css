@@ -5,34 +5,36 @@
 /* Theme tokens (RGB channels so Tailwind opacity modifiers work). */
 :root {
   color-scheme: light;
-  --bg: 244 245 248;
-  --surface: 255 255 255;
-  --subtle: 239 241 245;
-  --line: 226 229 235;
-  --fg: 17 20 28;
-  --muted: 92 100 117;
-  --faint: 148 155 170;
-  --accent: 79 70 229;
+  --bg: 245 243 238;
+  --surface: 252 251 248;
+  --subtle: 238 235 228;
+  --line: 222 218 208;
+  --fg: 28 27 24;
+  --muted: 105 102 94;
+  --faint: 154 150 140;
+  --accent: 214 82 30;
   --accent-fg: 255 255 255;
-  --ok: 5 150 105;
-  --warn: 217 119 6;
-  --bad: 220 38 38;
+  --accent2: 37 99 135;
+  --ok: 46 125 80;
+  --warn: 176 112 12;
+  --bad: 190 45 45;
 }
 
 .dark {
   color-scheme: dark;
-  --bg: 10 12 17;
-  --surface: 18 21 28;
-  --subtle: 25 29 38;
-  --line: 36 41 54;
-  --fg: 232 235 241;
-  --muted: 145 152 170;
-  --faint: 92 99 117;
-  --accent: 129 140 248;
-  --accent-fg: 12 14 22;
-  --ok: 52 211 153;
-  --warn: 251 191 36;
-  --bad: 248 113 113;
+  --bg: 22 21 19;
+  --surface: 30 29 26;
+  --subtle: 38 36 33;
+  --line: 52 50 45;
+  --fg: 236 233 226;
+  --muted: 160 156 146;
+  --faint: 108 105 97;
+  --accent: 245 122 66;
+  --accent-fg: 24 22 20;
+  --accent2: 110 168 204;
+  --ok: 110 190 140;
+  --warn: 226 170 70;
+  --bad: 236 110 100;
 }
 
 @layer base {
@@ -47,27 +49,49 @@
 
 @layer components {
   .card {
-    @apply bg-surface border border-line rounded-xl shadow-card;
+    @apply bg-surface border border-line rounded-md;
   }
   .field {
-    @apply w-full bg-subtle/60 border border-line rounded-lg px-3 py-2 text-sm text-fg
+    @apply w-full bg-surface border border-line rounded-md px-3 py-2 text-sm text-fg
       placeholder:text-faint outline-none transition-[border-color,box-shadow]
-      focus:border-accent focus:ring-4 focus:ring-accent/15;
+      focus:border-fg/60 focus:ring-2 focus:ring-fg/10;
   }
   .label {
     @apply text-xs font-medium text-muted;
   }
+  .eyebrow {
+    @apply font-mono text-[11px] uppercase tracking-[0.08em] text-muted;
+  }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-1.5 h-8 px-2.5 rounded-lg text-sm text-muted
+    @apply inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md text-sm text-muted
       hover:text-fg hover:bg-subtle transition-colors disabled:opacity-40 disabled:pointer-events-none;
   }
   .btn-outline {
-    @apply inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-sm font-medium
+    @apply inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-md text-sm font-medium
       border border-line bg-surface text-fg hover:bg-subtle transition-colors
       disabled:opacity-40 disabled:pointer-events-none;
   }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 h-9 px-4 rounded-md text-sm font-medium
+      bg-accent text-accent-fg border border-accent transition-[background-color,transform]
+      hover:bg-accent/90 active:translate-y-px disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded bg-surface border border-line text-[13px];
+  }
+  .type-tag {
+    @apply font-mono text-[11px] px-1.5 py-px rounded-sm;
+  }
   .kbd {
     @apply inline-flex items-center rounded border border-current px-1.5 text-[10px] font-mono opacity-70;
+  }
+}
+
+@layer utilities {
+  /* Ruled paper: faint horizontal lines behind the workspace. */
+  .bg-ruled {
+    background-image: linear-gradient(rgb(var(--line) / 0.45) 1px, transparent 1px);
+    background-size: 100% 28px;
   }
 }
 
@@ -81,18 +105,7 @@
 ::-webkit-scrollbar-thumb {
   background: rgb(var(--line));
   border-radius: 8px;
-  border: 2px solid transparent;
-  background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgb(var(--faint));
-}
-
-input[type='range'] {
-  accent-color: rgb(var(--accent));
-}
-
-.bg-dots {
-  background-image: radial-gradient(rgb(var(--line)) 1px, transparent 1px);
-  background-size: 18px 18px;
+  background: rgb(var(--faint));
 }

@@ -1,77 +1,55 @@
-import React, { useState, useEffect, useRef } from 'react';
-import StatusBar from './components/StatusBar';
-import PipelineStepper from './components/PipelineStepper';
-import ConfigPanel from './components/ConfigPanel';
-import InspectorPanel from './components/InspectorPanel';
+import React, { useEffect, useState } from 'react';
+import TopBar from './components/TopBar';
+import Composer, { PRESETS } from './components/Composer';
+import RunView from './components/RunView';
+import ResultsView from './components/ResultsView';
+import ErrorView from './components/ErrorView';
 import HistoryModal from './components/HistoryModal';
 import SettingsModal from './components/SettingsModal';
-import { readNdjson } from './lib/ndjson';
+import { useScrape } from './lib/useScrape';
 
-const STEP_ORDER = ['fetch', 'distill', 'infer', 'validate'];
-const DEFAULT_URL = 'https://quotes.toscrape.com';
 const LEGACY_DEFAULT_MODEL = 'qwen/qwen3.8-27b';
-const DEFAULT_SCHEMA = 'Each quote: text (string), author (string), tags (list of strings)';
+const DEFAULT_MODEL = 'openai/gpt-oss-120b'; // first in MODELS, scraper/brain.py
+
+function loadJson(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || 'null');
+  } catch {
+    return null;
+  }
+}
+
+function saveJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // storage unavailable (private window); keep working without it
+  }
+}
 
 export default function App() {
-  const [theme, setTheme] = useState(() =>
-    document.documentElement.classList.contains('dark') ? 'dark' : 'light'
-  );
-  const [url, setUrl] = useState(DEFAULT_URL);
-  const [schema, setSchema] = useState(DEFAULT_SCHEMA);
-  const [retries, setRetries] = useState(3);
-  const [expectList, setExpectList] = useState(true);
-  const [scroll, setScroll] = useState(true);
-  const [maxScrolls, setMaxScrolls] = useState(5);
-  const [maxPages, setMaxPages] = useState(1);
-  const [pageInfo, setPageInfo] = useState(null); // { page, max } while scraping several pages
-  const [partInfo, setPartInfo] = useState(null); // { part, parts } while reading a long page in parts
-  const [headless, setHeadless] = useState(true);
-
-  // Runtime states
-  const [status, setStatus] = useState('idle'); // idle | running | done | error
-  const [currentStep, setCurrentStep] = useState('idle'); // fetch | distill | infer | validate | done
-  const stepRef = useRef('idle');
-  const abortRef = useRef(null);
-  const [errorStep, setErrorStep] = useState(null);
-  const [attempt, setAttempt] = useState(null);
-  const [resultData, setResultData] = useState(null);
-  const [errorMessage, setErrorMessage] = useState(null);
-  const [warnings, setWarnings] = useState([]);
-
-  // Telemetry & metrics
-  const [metrics, setMetrics] = useState({ elapsed: 0, itemsCount: 0 });
-  const [startedAt, setStartedAt] = useState(null); // performance.now() of the running scrape
-
-  // Logs feed
-  const [logs, setLogs] = useState([]);
-
-  // History & settings
+  const [theme, setTheme] = useState(() => (document.documentElement.classList.contains('dark') ? 'dark' : 'light'));
+  const [url, setUrl] = useState(PRESETS[0].url);
+  const [schema, setSchema] = useState(PRESETS[0].schema);
+  const [options, setOptions] = useState({ retries: 3, expectList: true, scroll: true, maxScrolls: 5, maxPages: 1, headless: true });
+  const [view, setView] = useState('compose'); // compose | run | results | error
+  const [config, setConfig] = useState({ apiKey: '', model: '', backendUrl: 'http://localhost:8000', maxChars: 40000 });
   const [history, setHistory] = useState([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [config, setConfig] = useState({
-    apiKey: '',
-    model: '',
-    backendUrl: 'http://localhost:8000',
-    maxChars: 40000
-  });
+  const scrape = useScrape();
+  const { state } = scrape;
 
   useEffect(() => {
-    try {
-      const savedHistory = localStorage.getItem('ai_scraper_history');
-      if (savedHistory) setHistory(JSON.parse(savedHistory));
-
-      const savedConfig = localStorage.getItem('ai_scraper_config');
-      if (savedConfig) {
-        const parsed = JSON.parse(savedConfig);
-        // The old UI saved its placeholder model as if the user chose it; treat it as "auto".
-        if (!parsed.version && parsed.model === LEGACY_DEFAULT_MODEL) parsed.model = '';
-        // Long pages are now read in parts, so the old one-request default of 12,000 moves up.
-        if ((parsed.version || 0) < 3 && Number(parsed.maxChars) === 12000) parsed.maxChars = 40000;
-        setConfig((prev) => ({ ...prev, ...parsed }));
-      }
-    } catch (e) {
-      console.error('Failed to load local storage:', e);
+    const savedHistory = loadJson('ai_scraper_history');
+    if (Array.isArray(savedHistory)) setHistory(savedHistory);
+    const saved = loadJson('ai_scraper_config');
+    if (saved) {
+      // The old UI saved its placeholder model as if the user chose it; treat it as "auto".
+      if (!saved.version && saved.model === LEGACY_DEFAULT_MODEL) saved.model = '';
+      // Long pages are now read in parts, so the old one-request default of 12,000 moves up.
+      if ((saved.version || 0) < 3 && Number(saved.maxChars) === 12000) saved.maxChars = 40000;
+      setConfig((prev) => ({ ...prev, ...saved }));
     }
   }, []);
 
@@ -84,281 +62,110 @@ export default function App() {
     }
   }, [theme]);
 
-  const handleToggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+  // Follow the run: show progress, then results or the error.
+  useEffect(() => {
+    if (state.status === 'running') setView('run');
+    else if (state.status === 'done') setView((v) => (v === 'run' ? 'results' : v));
+    else if (state.status === 'error') setView('error');
+    else if (state.status === 'idle') setView((v) => (v === 'run' ? 'compose' : v));
+  }, [state.status]);
 
-  const addLog = (message, type = 'info', badge = 'STEP') => {
-    const now = new Date();
-    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-    setLogs((prev) => [{ time, message, type, badge }, ...prev.slice(0, 49)]);
+  const model = config.model || DEFAULT_MODEL;
+
+  const run = () => {
+    if (!url.trim() || !schema.trim()) return;
+    scrape.run(
+      { url, schema, ...options, backendUrl: config.backendUrl, model: config.model, apiKey: config.apiKey, maxChars: config.maxChars },
+      {
+        onDone: (result) => {
+          const entry = {
+            id: Date.now(),
+            timestamp: new Date().toLocaleString(),
+            url,
+            schema,
+            itemsCount: result.items,
+            pagesScraped: result.pages,
+            elapsed: result.elapsed,
+            data: result.data,
+            warnings: result.warnings,
+          };
+          setHistory((prev) => {
+            const next = [entry, ...prev.slice(0, 24)];
+            saveJson('ai_scraper_history', next);
+            return next;
+          });
+        },
+      }
+    );
   };
 
-  const handleRun = async () => {
-    if (!url || !schema) return;
-
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    setStatus('running');
-    setResultData(null);
-    setErrorMessage(null);
-    setWarnings([]);
-    setErrorStep(null);
-    setAttempt(null);
-    setPageInfo(null);
-    setPartInfo(null);
-    setCurrentStep('fetch');
-    stepRef.current = 'fetch';
-
-    const startTime = performance.now();
-    setStartedAt(startTime);
-    setMetrics({ elapsed: 0, itemsCount: 0 });
-    addLog(`Starting scrape of ${url}`, 'info', 'START');
-
-    try {
-      const base = (config.backendUrl || 'http://localhost:8000').replace(/\/$/, '');
-      const response = await fetch(`${base}/scrape/stream`, {
-        method: 'POST',
-        signal: controller.signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: url.trim(),
-          schema_description: schema.trim(),
-          instruction: schema.trim(),
-          max_retries: retries,
-          expect_list: expectList,
-          scroll: scroll,
-          max_scrolls: maxScrolls,
-          max_pages: expectList ? maxPages : 1,
-          headless: headless,
-          model: config.model || null,
-          api_key: config.apiKey || null,
-          max_chars: config.maxChars || null
-        })
-      });
-
-      if (response.status === 404) {
-        throw new Error(
-          `The backend at ${base} has no /scrape/stream endpoint, so it is running older code. Restart the backend to pick up the latest version.`
-        );
-      }
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        let errMsg = `Server returned HTTP ${response.status}`;
-        if (typeof errorData.detail === 'string') {
-          errMsg = errorData.detail;
-        } else if (Array.isArray(errorData.detail)) {
-          errMsg = errorData.detail.map(d => d.msg || d.message || JSON.stringify(d)).join('; ');
-        }
-        throw new Error(errMsg);
-      }
-
-      let final = null;
-      for await (const event of readNdjson(response)) {
-        if (event.type === 'step') {
-          handleStepEvent(event);
-        } else if (event.type === 'retry') {
-          addLog(`Attempt ${event.attempt} of ${event.max_attempts} failed validation: ${event.error}`, 'retry', 'RETRY');
-        } else if (event.type === 'page_done') {
-          setMetrics((m) => ({ ...m, itemsCount: event.total_items }));
-          if (expectList && maxPages > 1) {
-            addLog(`Page ${event.page}: ${event.items} records (${event.total_items} so far)`, 'info', 'PAGE');
-          }
-        } else if (event.type === 'part_done') {
-          addLog(`Part ${event.part} of ${event.parts}: ${event.items} new records (${event.total_items} on this page so far)`, 'info', 'PART');
-          if (event.stopped) {
-            addLog(`Part ${event.part} had no records, so the list has ended; skipping the remaining ${event.parts - event.part}.`, 'info', 'PART');
-          }
-        } else if (event.type === 'warning') {
-          addLog(event.message, 'warn', 'WARNING');
-        } else if (event.type === 'result' || event.type === 'error') {
-          final = event;
-        }
-      }
-
-      if (!final) throw new Error('Lost connection to the backend before the scrape finished.');
-      if (final.type === 'error') {
-        const err = new Error(final.message || 'Scrape failed.');
-        err.step = final.step;
-        throw err;
-      }
-
-      const extractedData = final.data;
-      const elapsed = String(final.elapsed_seconds);
-      const itemsCount = final.items_count;
-      const runWarnings = final.warnings || [];
-      const pagesScraped = final.pages_scraped || 1;
-
-      setCurrentStep('done');
-      setStatus('done');
-      setResultData(extractedData);
-      setWarnings(runWarnings);
-      setMetrics({ elapsed, itemsCount });
-
-      const fromPages = pagesScraped > 1 ? ` from ${pagesScraped} pages` : '';
-      addLog(`Done: ${itemsCount} records${fromPages} in ${elapsed}s`, 'info', 'DONE');
-
-      // Save to history
-      const newRun = {
-        id: Date.now(),
-        timestamp: new Date().toLocaleTimeString(),
-        url,
-        schema,
-        itemsCount,
-        pagesScraped,
-        elapsed,
-        data: extractedData,
-        warnings: runWarnings
-      };
-      const updatedHistory = [newRun, ...history.slice(0, 24)];
-      setHistory(updatedHistory);
-      localStorage.setItem('ai_scraper_history', JSON.stringify(updatedHistory));
-
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        // Cancelled by the user; closing the stream also stops the backend.
-        setStatus('idle');
-        setCurrentStep('idle');
-        setAttempt(null);
-        setMetrics({ itemsCount: 0, elapsed: ((performance.now() - startTime) / 1000).toFixed(2) });
-        addLog('Scrape cancelled.', 'warn', 'CANCELLED');
-        return;
-      }
-      // The backend reports which step failed; otherwise blame the step we last saw.
-      const failed = err.step || stepRef.current;
-      setStatus('error');
-      setErrorStep(STEP_ORDER.includes(failed) ? failed : 'fetch');
-      setErrorMessage(err.message || 'Scrape execution failed.');
-
-      setMetrics({ itemsCount: 0, elapsed: ((performance.now() - startTime) / 1000).toFixed(2) });
-
-      addLog(err.message || 'Scrape failed', 'error', 'ERROR');
+  const edit = () => {
+    if (state.request) {
+      setUrl(state.request.url);
+      setSchema(state.request.schema);
     }
+    setView('compose');
   };
 
-  const handleStepEvent = (event) => {
-    stepRef.current = event.step;
-    if (event.step !== 'done') setCurrentStep(event.step);
-    if (event.attempt) setAttempt({ current: event.attempt, max: event.max_attempts });
-
-    if (event.step === 'fetch') setPartInfo(null);
-    if (event.part) setPartInfo({ part: event.part, parts: event.parts });
-
-    if (event.step === 'fetch' && event.max_pages > 1) {
-      setPageInfo({ page: event.page, max: event.max_pages });
-      setAttempt(null);
-      if (event.page > 1) addLog(`Loading page ${event.page} of up to ${event.max_pages}: ${event.url}`, 'info', 'NEXT');
-    } else if (event.step === 'distill') {
-      addLog(`Page loaded (${event.html_chars.toLocaleString()} chars of HTML). Cleaning…`, 'info', 'CLEAN');
-    } else if (event.step === 'infer') {
-      const suffix = event.attempt > 1 ? ` (attempt ${event.attempt} of ${event.max_attempts})` : '';
-      const part = event.part ? `part ${event.part} of ${event.parts}, ` : '';
-      addLog(`Extracting fields from ${part}${event.text_chars.toLocaleString()} chars of text${suffix}…`, 'info', 'EXTRACT');
-    } else if (event.step === 'validate') {
-      addLog('Validating output against your fields…', 'info', 'VALIDATE');
-    }
+  const openRun = (entry) => {
+    setUrl(entry.url);
+    setSchema(entry.schema);
+    scrape.load(entry);
+    setView('results');
+    setIsHistoryOpen(false);
   };
 
-  const handleSelectHistoryRun = (run) => {
-    setUrl(run.url);
-    setSchema(run.schema);
-    setResultData(run.data);
-    setWarnings(run.warnings || []);
-    setAttempt(null);
-    setStatus('done');
-    setCurrentStep('done');
-    setErrorStep(null);
-    setErrorMessage(null);
-    setMetrics({ elapsed: run.elapsed, itemsCount: run.itemsCount });
-    addLog(`Loaded saved run for ${run.url}`, 'info', 'HISTORY');
-  };
-
-  const handleClearHistory = () => {
-    setHistory([]);
-    localStorage.removeItem('ai_scraper_history');
-    addLog('Run history cleared.', 'info', 'HISTORY');
-  };
-
-  const handleSaveConfig = (newConfig) => {
-    setConfig(newConfig);
-    localStorage.setItem('ai_scraper_config', JSON.stringify({ ...newConfig, version: 3 }));
-    addLog('Settings saved.', 'info', 'SETTINGS');
+  const saveConfig = (next) => {
+    setConfig(next);
+    saveJson('ai_scraper_config', { ...next, version: 3 });
   };
 
   return (
-        <div className="h-screen w-full flex flex-col overflow-hidden">
-      <StatusBar
-        status={status}
-        metrics={metrics}
-        startedAt={status === 'running' ? startedAt : null}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+    <div className="min-h-screen flex flex-col">
+      <TopBar
+        request={view === 'compose' ? null : state.request}
+        onEdit={edit}
         onOpenHistory={() => setIsHistoryOpen(true)}
         historyCount={history.length}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         theme={theme}
-        onToggleTheme={handleToggleTheme}
+        onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
       />
 
-      <main className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
-        <div className="w-full lg:w-[40%] lg:min-w-[380px] lg:max-w-[520px] shrink-0 lg:border-r border-line">
-          <ConfigPanel
+      <main className="flex-1 bg-ruled">
+        {view === 'compose' && (
+          <Composer
             url={url}
             setUrl={setUrl}
             schema={schema}
             setSchema={setSchema}
-            retries={retries}
-            setRetries={setRetries}
-            expectList={expectList}
-            setExpectList={setExpectList}
-            scroll={scroll}
-            setScroll={setScroll}
-            maxScrolls={maxScrolls}
-            maxPages={maxPages}
-            setMaxPages={setMaxPages}
-            setMaxScrolls={setMaxScrolls}
-            headless={headless}
-            setHeadless={setHeadless}
-            onRun={handleRun}
-            onCancel={() => abortRef.current?.abort()}
-            isLoading={status === 'running'}
-            logs={logs}
-            onClearLogs={() => setLogs([])}
+            options={options}
+            setOption={(key, value) => setOptions((o) => ({ ...o, [key]: value }))}
+            onRun={run}
+            model={model.replace(/^openai\//, '')}
+            onBackToResults={state.result ? () => setView('results') : null}
           />
-        </div>
-
-        <div className="flex-1 flex flex-col min-w-0 min-h-[520px] lg:min-h-0 border-t lg:border-t-0 border-line bg-dots">
-          <PipelineStepper
-            currentStep={currentStep}
-            errorStep={errorStep}
-            attempt={attempt}
-            pageInfo={status === 'running' ? pageInfo : null}
-            partInfo={status === 'running' ? partInfo : null}
-          />
-
-          <div className="flex-1 min-h-0">
-            <InspectorPanel
-              data={resultData}
-              isLoading={status === 'running'}
-              error={errorMessage}
-              warnings={warnings}
-            />
-          </div>
-        </div>
+        )}
+        {view === 'run' && <RunView state={state} model={model} onStop={scrape.cancel} />}
+        {view === 'results' && <ResultsView state={state} model={model} onRerun={run} onOpenSettings={() => setIsSettingsOpen(true)} />}
+        {view === 'error' && <ErrorView error={state.error} onRetry={run} onEdit={edit} />}
       </main>
 
       <HistoryModal
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         history={history}
-        onSelectRun={handleSelectHistoryRun}
-        onClearHistory={handleClearHistory}
+        onSelectRun={openRun}
+        onClearHistory={() => {
+          setHistory([]);
+          try {
+            localStorage.removeItem('ai_scraper_history');
+          } catch {
+            // nothing to clear
+          }
+        }}
       />
-
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        config={config}
-        onSave={handleSaveConfig}
-      />
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} config={config} onSave={saveConfig} />
     </div>
   );
 }

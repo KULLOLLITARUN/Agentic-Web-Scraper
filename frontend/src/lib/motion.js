@@ -8,7 +8,7 @@ const reducedMotion = () =>
 export function motion(targets, params) {
   if (!targets || (Array.isArray(targets) && targets.length === 0)) return null;
   if (reducedMotion()) {
-    return animate(targets, { ...params, duration: 0, delay: 0 });
+    return animate(targets, { ...params, duration: 0, delay: 0, loop: false, alternate: false });
   }
   return animate(targets, params);
 }
