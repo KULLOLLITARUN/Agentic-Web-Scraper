@@ -418,3 +418,44 @@ def test_emits_highlight_boxes_for_located_records(monkeypatch):
     assert len(marks) == 1
     assert marks[0]["page"] == 1
     assert marks[0]["boxes"] == [{"i": 0, "x": 100, "y": 400, "w": 200, "h": 300}]
+
+
+JOB_PAGE = "<main>" + "".join(
+    f"<div><h3>{t}</h3><p>{c}</p><p>{y}</p><p>Bengaluru</p><p>Build and ship models for clients.</p></div>"
+    for t, c, y in [("Associate AI/ML Engineer", "Optum", "3-8 Yrs"), ("HCL Weekend Drive", "HCLTech", "6-11 Yrs")]
+    + [("AI / ML Engineer", "Accenture", f"{n}-{n + 3} Yrs") for n in range(2, 8)]
+) + "<p>About us</p></main>"
+
+
+def job(t, c, y):
+    return {"title": t, "company": c, "experience": y, "location": "Bengaluru"}
+
+
+def run_jobs(monkeypatch, replies):
+    async def fetch(self, url, **_):
+        return JOB_PAGE
+
+    monkeypatch.setattr(FakeNavigator, "fetch", fetch)
+    p = ScraperPipeline(api_key="test-key")
+    p._brain = RecordingBrain(replies)
+    result = asyncio.run(p.run("https://example.com", "title, company, experience, location"))
+    return result, p._brain.calls
+
+
+def test_items_after_where_the_model_stopped_are_read(monkeypatch):
+    first = [job("Associate AI/ML Engineer", "Optum", "3-8 Yrs"), job("HCL Weekend Drive", "HCLTech", "6-11 Yrs"),
+             job("AI / ML Engineer", "Accenture", "2-5 Yrs")]
+    rest = [job("AI / ML Engineer", "Accenture", f"{n}-{n + 3} Yrs") for n in range(2, 8)]
+    result, calls = run_jobs(monkeypatch, [json.dumps(first), json.dumps(rest)])
+
+    assert len(calls) == 2
+    assert calls[1]["cleaned_text"].startswith("AI / ML Engineer")
+    assert result["items_count"] == 8  # the repeated 2-5 Yrs job is merged
+
+
+def test_complete_page_is_read_once(monkeypatch):
+    jobs = [job("Associate AI/ML Engineer", "Optum", "3-8 Yrs"), job("HCL Weekend Drive", "HCLTech", "6-11 Yrs")]
+    jobs += [job("AI / ML Engineer", "Accenture", f"{n}-{n + 3} Yrs") for n in range(2, 8)]
+    result, calls = run_jobs(monkeypatch, [json.dumps(jobs)])
+
+    assert len(calls) == 1 and result["items_count"] == 8

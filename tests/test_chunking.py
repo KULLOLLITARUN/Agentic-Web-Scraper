@@ -1,4 +1,4 @@
-from scraper.chunking import BOUNDARY_ITEMS, merge_items, split_text
+from scraper.chunking import BOUNDARY_ITEMS, merge_items, rest_after, split_text
 
 
 def lines(n, width=99):
@@ -82,3 +82,35 @@ def test_long_overlap_of_short_rows_is_dropped():
     fresh = merge_items(kept, [dict(item) for item in new])
 
     assert [item["name"] for item in fresh] == [f"Country {i}" for i in range(117, 130)]
+
+
+def job_text(jobs, footer="Similar jobs\nData Scientist Jobs In Bangalore\nAbout us\n"):
+    lines = []
+    for title, company, years in jobs:
+        lines += [title, company, years, "Bengaluru", "Build and ship models for clients.", "5 days ago", "save"]
+    return "\n".join(lines) + "\n" + footer
+
+
+JOBS = [("Associate AI/ML Engineer", "Optum", "3-8 Yrs"), ("Senior AI/ML Engineer", "Optum", "7-12 Yrs"),
+        ("HCL Weekend Drive", "HCLTech", "6-11 Yrs")] + [("AI / ML Engineer", "Accenture", "2-5 Yrs")] * 6
+
+
+def as_items(jobs):
+    return [{"title": t, "company": c, "experience": y, "location": "Bengaluru"} for t, c, y in jobs]
+
+
+def test_rest_after_finds_items_the_model_stopped_before():
+    text = job_text(JOBS)
+    rest = rest_after(text, as_items(JOBS[:3]) + as_items(JOBS[3:4]))
+
+    assert rest is not None and rest.startswith("AI / ML Engineer\nAccenture")
+    assert rest.count("AI / ML Engineer") == 6
+
+
+def test_rest_after_is_none_when_only_the_footer_follows():
+    assert rest_after(job_text(JOBS), as_items(JOBS)) is None
+
+
+def test_rest_after_needs_items_it_can_find():
+    assert rest_after(job_text(JOBS), [{"title": "Not on the page", "company": "X"}] * 2) is None
+    assert rest_after(job_text(JOBS), as_items(JOBS[:1])) is None

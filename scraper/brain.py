@@ -7,6 +7,7 @@ Equipped with multi-model auto-failover to handle Groq rate limits.
 
 import asyncio
 import os
+import re
 import logging
 
 import groq
@@ -40,6 +41,9 @@ MIN_TOKEN_BUDGET = 1000
 CHARS_PER_TOKEN = 3.2
 # Wait before retrying a request rejected as too large for the TPM limit.
 TOO_LARGE_RETRY_DELAY = 3
+# A per-minute rate limit that clears within this many seconds is waited out
+# on the same model; longer waits (the daily limit) fail over instead.
+MAX_RATE_WAIT = 20
 
 # Error codes meaning "this particular model can't be used" — worth failing over.
 MODEL_ERROR_CODES = {"model_not_found", "model_decommissioned", "model_not_active"}
@@ -144,6 +148,14 @@ class Brain:
                         logger.warning("%s: request too large for the TPM limit; retrying with budget=%d.", model_name, token_budget)
                         await asyncio.sleep(TOO_LARGE_RETRY_DELAY)
                         continue
+                    wait = _retry_after(e) if isinstance(e, groq.RateLimitError) else None
+                    if retry_smaller and wait is not None and wait <= MAX_RATE_WAIT:
+                        # A second request soon after the first (the rest of a
+                        # page, the next part) goes over the minute's tokens;
+                        # the main model is worth a few seconds' wait.
+                        logger.warning("%s: rate limited; retrying in %.1fs.", model_name, wait)
+                        await asyncio.sleep(wait)
+                        continue
                     last_error = e
                     logger.warning("%s failed (%s). Failing over to next model...", model_name, e)
                     if isinstance(e, groq.RateLimitError):
@@ -225,6 +237,23 @@ def _error_code(error: groq.APIError) -> str:
     body = error.body if isinstance(error.body, dict) else {}
     inner = body.get("error") if isinstance(body.get("error"), dict) else body
     return str(inner.get("code") or "")
+
+
+def _retry_after(error: groq.APIError) -> float | None:
+    """Seconds until a rate limit clears: the retry-after header, else "try again in 7.5s"."""
+    response = getattr(error, "response", None)
+    header = response.headers.get("retry-after") if response is not None else None
+    try:
+        if header is not None:
+            return float(header)
+    except ValueError:
+        pass
+    match = re.search(r"try again in (?:(\d+)m)?([\d.]+)(ms|s)", str(error))
+    if not match:
+        return None
+    minutes, value, unit = match.groups()
+    seconds = float(value) / 1000 if unit == "ms" else float(value)
+    return seconds + 60 * int(minutes or 0)
 
 
 def _too_large_for_tpm(error: groq.APIError) -> bool:

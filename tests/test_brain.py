@@ -264,3 +264,34 @@ def test_second_tpm_413_fails_over():
 
     assert [m for m, _ in budgets] == [MODELS[0], MODELS[0], MODELS[1]]
     assert b.model_used == MODELS[1]
+
+
+def rate_limited(message="Rate limit reached. Please try again in 7.5s.", retry_after=None):
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    headers = {"retry-after": retry_after} if retry_after else {}
+    response = httpx.Response(429, request=request, headers=headers)
+    return groq.RateLimitError(message, response=response, body=None)
+
+
+def test_short_rate_limit_is_waited_out_on_the_same_model():
+    b, fake = make_brain([rate_limited(), "[]"])
+
+    extract(b)
+
+    assert fake.models == [MODELS[0], MODELS[0]]
+    assert b.model_used == MODELS[0]
+
+
+def test_long_rate_limit_fails_over():
+    b, fake = make_brain([rate_limited("Please try again in 12m3.5s."), "[]"])
+
+    extract(b)
+
+    assert fake.models == [MODELS[0], MODELS[1]]
+
+
+def test_retry_after_reads_header_then_message():
+    assert brain_module._retry_after(rate_limited(retry_after="4")) == 4.0
+    assert brain_module._retry_after(rate_limited("try again in 640ms")) == 0.64
+    assert brain_module._retry_after(rate_limited("try again in 1m2s")) == 62.0
+    assert brain_module._retry_after(rate_limited("no hint")) is None

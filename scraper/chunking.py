@@ -102,3 +102,54 @@ def merge_items(items: list[Any], new_items: list[Any]) -> list[Any]:
                 if match.get(key) is None and value is not None:
                     match[key] = value
     return fresh
+
+
+#: Lines after the last item that repeat values the items share ("Accenture",
+#: "2-5 Yrs") before the text after the last item counts as unread items.
+REST_MIN_HITS = 3
+
+
+def _key_value(item: Any) -> str | None:
+    """The item's longest text value (usually its title), for finding it in the page text."""
+    if not isinstance(item, dict):
+        return None
+    texts = [v for v in item.values() if isinstance(v, str) and len(v.strip()) >= 4]
+    return _normalise(max(texts, key=len)) if texts else None
+
+
+def rest_after(text: str, items: list[Any]) -> str | None:
+    """The page text from the last extracted item on, if more items follow it.
+
+    The model sometimes stops early on a long run of look-alike items (13
+    near-identical "AI / ML Engineer" jobs at the end of a Naukri page). The
+    items are found in the text in order; after the last one (and one usual
+    item length past it), lines equal to values that two or more items share
+    mean more items are there. A footer has none, so it costs no request.
+    """
+    lower = text.lower()
+    starts: list[int] = []
+    cursor = 0
+    for item in items:
+        key = _key_value(item)
+        pos = lower.find(key, cursor) if key else -1
+        if pos != -1:
+            starts.append(pos)
+            cursor = pos + 1
+    if len(starts) < 2:
+        return None
+
+    gaps = sorted(b - a for a, b in zip(starts, starts[1:]))
+    span = gaps[len(gaps) // 2]  # a usual item's length
+    counts: dict[str, int] = {}
+    for item in items:
+        if isinstance(item, dict):
+            for v in {_normalise(v) for v in item.values() if isinstance(v, str)}:
+                counts[v] = counts.get(v, 0) + 1
+    shared = {v for v, n in counts.items() if n >= 2 and len(v) >= 2}
+    wanted = shared | ({_key_value(item) for item in items} - {None})
+    after = text[starts[-1] + span:]
+    hits = sum(1 for line in after.splitlines() if _normalise(line) in wanted)
+    if hits < REST_MIN_HITS:
+        return None
+    line_start = text.rfind("\n", 0, starts[-1]) + 1
+    return text[line_start:]

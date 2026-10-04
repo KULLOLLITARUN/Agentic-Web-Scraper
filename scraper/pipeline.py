@@ -13,7 +13,7 @@ from typing import Any, Callable
 from scraper.navigator import Navigator
 from scraper.distiller import Distiller, wanted_attributes
 from scraper.brain import Brain
-from scraper.chunking import CHUNK_CHARS, merge_items, split_text
+from scraper.chunking import CHUNK_CHARS, merge_items, rest_after, split_text
 from scraper.locate import locate_records
 from scraper.pagination import find_next_page
 from scraper.validator import SchemaMismatchError, Validator, ValidationError
@@ -25,6 +25,8 @@ logger = logging.getLogger("ai_scraper")
 # more: on Naukri a weak retry once returned 3 of a page's 20 jobs.
 SHORT_PAGE_SHARE = 0.5
 SHORT_PAGE_MIN = 10
+#: Times the text after the last item is read again when more items follow it.
+MAX_REST_READS = 2
 
 
 class ScraperPipeline:
@@ -281,8 +283,10 @@ class ScraperPipeline:
 
         async def read(found_warnings: list[str]) -> list[Any]:
             if len(parts) == 1:
-                return await self._extract(cleaned, schema_description, True, found_warnings)
-            return await self._extract_parts(parts, schema_description, found_warnings)
+                items = await self._extract(cleaned, schema_description, True, found_warnings)
+            else:
+                items = await self._extract_parts(parts, schema_description, found_warnings)
+            return await self._read_rest(cleaned, items, schema_description, found_warnings)
 
         base = list(warnings)  # notes from fetching and distilling
         data = await read(warnings)
@@ -302,6 +306,40 @@ class ScraperPipeline:
                     "try running it again."
                 )
         return data, raw_html, warnings
+
+    async def _read_rest(
+        self,
+        text: str,
+        items: list[Any],
+        schema_description: str,
+        warnings: list[str],
+    ) -> list[Any]:
+        """Read the text after the last item again when more items follow it.
+
+        The model can stop early on a run of look-alike items: on a Naukri
+        page it returned the first 9 of 22 jobs, every time, and left out 13
+        near-identical "AI / ML Engineer" posts. See :func:`rest_after`.
+        """
+        for _ in range(MAX_REST_READS):
+            rest = rest_after(text, items)
+            if not rest:
+                break
+            logger.info("More items follow the last of %d; reading the rest of the page.", len(items))
+            rest_warnings: list[str] = []
+            try:
+                found = await self._extract(
+                    rest[:CHUNK_CHARS], schema_description, True, rest_warnings, part=(2, 2)
+                )
+            except Exception as e:  # keep what was found
+                logger.warning("Reading the rest of the page failed: %s", e)
+                break
+            fresh = merge_items(items, found)
+            warnings += [w for w in rest_warnings if w not in warnings]
+            if not fresh:
+                break
+            items = items + fresh
+            self._emit("part_done", part=2, parts=2, items=len(fresh), total_items=len(items), stopped=False)
+        return items
 
     async def _extract_parts(
         self,
