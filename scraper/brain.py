@@ -29,7 +29,15 @@ MODELS = [
     "qwen/qwen3.8-27b"
 ]
 
+# Output token caps. Groq's free tier allows 8,000 tokens per minute per
+# model, and it sometimes rejects a request (413) when prompt + max_tokens
+# goes over that, so the cap shrinks as the prompt grows.
+TPM_LIMIT = 8000
 GPT_OSS_TOKEN_BUDGET = 6000
+MIN_TOKEN_BUDGET = 1000
+# Measured ~3.7 characters per token on a distilled job board page; 3.2
+# overestimates the prompt so the total stays under the limit.
+CHARS_PER_TOKEN = 3.2
 
 # Error codes meaning "this particular model can't be used" — worth failing over.
 MODEL_ERROR_CODES = {"model_not_found", "model_decommissioned", "model_not_active"}
@@ -85,6 +93,7 @@ class Brain:
 
         user_parts.append(
             "\nExtract EVERY matching item on the page, in page order. "
+            "Items that look alike (same title or company) are separate entries: include each one. "
             "Give every item every field, using null when the page has no value, "
             "and use JSON numbers/booleans (not strings) for numeric/boolean fields. "
             "Return compact JSON on a single line with no indentation, "
@@ -97,7 +106,7 @@ class Brain:
 
         # Iterate through model pool with automatic failover
         for model_name in self._models:
-            token_budget = _token_budget(model_name)
+            token_budget = _token_budget(model_name, len(SYSTEM_PROMPT) + len(user_prompt))
 
             try:
                 logger.info("Attempting extraction with model %s (budget=%d tokens)...", model_name, token_budget)
@@ -140,15 +149,20 @@ class Brain:
         raise last_error or RuntimeError("All models in the extraction pool exhausted.")
 
 
-def _token_budget(model_name: str) -> int:
-    """Output token cap (``max_tokens``) for *model_name*.
+def _token_budget(model_name: str, prompt_chars: int) -> int:
+    """Output token cap (``max_tokens``) for *model_name* and a prompt of *prompt_chars*.
 
-    Groq doesn't reserve ``max_tokens`` against the per-minute token limit
-    (8,000 for every model in the pool); only tokens actually generated
-    count. So a high cap costs nothing on short pages and keeps long ones
-    (Quotes pages with long quotes) from being cut off at the last items.
+    gpt-oss gets up to 6,000 so long pages aren't cut off, reduced so that
+    the estimated prompt plus the cap stays under the 8,000 TPM limit: with
+    a 3,939-token prompt, max_tokens=6000 was rejected with a 413 about one
+    call in three, while 3,500-3,900 always went through. A 413 fails over
+    to gpt-oss-20b, which on a job board page returned 1 of 22 jobs.
     """
-    return 800 if "qwen" in model_name else GPT_OSS_TOKEN_BUDGET
+    if "qwen" in model_name:
+        return 800
+    prompt_tokens = int(prompt_chars / CHARS_PER_TOKEN)
+    room = TPM_LIMIT - prompt_tokens - 200  # margin for message overhead
+    return max(MIN_TOKEN_BUDGET, min(GPT_OSS_TOKEN_BUDGET, room))
 
 
 def _model_options(model_name: str) -> dict:

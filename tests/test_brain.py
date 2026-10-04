@@ -88,6 +88,8 @@ def test_prompt_has_no_item_cap():
     prompt = captured["messages"][1]["content"]
     assert "EVERY matching item" in prompt
     assert "up to 15" not in prompt
+    # Without this, gpt-oss skipped look-alike job listings (5-22 of 22 found).
+    assert "look alike" in prompt
 
 
 @pytest.mark.parametrize(
@@ -178,6 +180,19 @@ def test_token_budget_per_model(model, budget):
     extract(b)
 
     assert captured["max_tokens"] == budget
+
+
+def test_token_budget_shrinks_so_prompt_plus_output_fits_tpm():
+    from scraper.brain import CHARS_PER_TOKEN, MIN_TOKEN_BUDGET, TPM_LIMIT, _token_budget
+
+    short = _token_budget("openai/gpt-oss-120b", 3_000)
+    page = _token_budget("openai/gpt-oss-120b", 14_500)  # 12k-char page + prompt text
+    huge = _token_budget("openai/gpt-oss-120b", 100_000)
+
+    assert short == brain_module.GPT_OSS_TOKEN_BUDGET
+    assert 3_000 < page < 4_000
+    assert 14_500 / CHARS_PER_TOKEN + page <= TPM_LIMIT
+    assert huge == MIN_TOKEN_BUDGET
 
 
 def test_truncated_set_when_reply_hits_length_limit():
