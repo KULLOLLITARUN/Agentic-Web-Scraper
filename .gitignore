@@ -11,3 +11,6 @@ CLAUDE.md
 
 # Old design mockups (v1-v4) and palettes, kept locally
 design/
+
+# Archify diagrams (generated locally)
+.archify/
