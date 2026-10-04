@@ -8,3 +8,6 @@ frontend/dist/
 
 # Local assistant notes, not part of the project
 CLAUDE.md
+
+# Old design mockups (v1-v4) and palettes, kept locally
+design/
