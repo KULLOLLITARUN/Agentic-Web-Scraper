@@ -24,6 +24,7 @@ export default function App() {
   const [maxScrolls, setMaxScrolls] = useState(5);
   const [maxPages, setMaxPages] = useState(1);
   const [pageInfo, setPageInfo] = useState(null); // { page, max } while scraping several pages
+  const [partInfo, setPartInfo] = useState(null); // { part, parts } while reading a long page in parts
   const [headless, setHeadless] = useState(true);
 
   // Runtime states
@@ -52,7 +53,7 @@ export default function App() {
     apiKey: '',
     model: '',
     backendUrl: 'http://localhost:8000',
-    maxChars: 12000
+    maxChars: 40000
   });
 
   useEffect(() => {
@@ -65,6 +66,8 @@ export default function App() {
         const parsed = JSON.parse(savedConfig);
         // The old UI saved its placeholder model as if the user chose it; treat it as "auto".
         if (!parsed.version && parsed.model === LEGACY_DEFAULT_MODEL) parsed.model = '';
+        // Long pages are now read in parts, so the old one-request default of 12,000 moves up.
+        if ((parsed.version || 0) < 3 && Number(parsed.maxChars) === 12000) parsed.maxChars = 40000;
         setConfig((prev) => ({ ...prev, ...parsed }));
       }
     } catch (e) {
@@ -103,6 +106,7 @@ export default function App() {
     setErrorStep(null);
     setAttempt(null);
     setPageInfo(null);
+    setPartInfo(null);
     setCurrentStep('fetch');
     stepRef.current = 'fetch';
 
@@ -159,6 +163,11 @@ export default function App() {
           setMetrics((m) => ({ ...m, itemsCount: event.total_items }));
           if (expectList && maxPages > 1) {
             addLog(`Page ${event.page}: ${event.items} records (${event.total_items} so far)`, 'info', 'PAGE');
+          }
+        } else if (event.type === 'part_done') {
+          addLog(`Part ${event.part} of ${event.parts}: ${event.items} new records (${event.total_items} on this page so far)`, 'info', 'PART');
+          if (event.stopped) {
+            addLog(`Part ${event.part} had no records, so the list has ended; skipping the remaining ${event.parts - event.part}.`, 'info', 'PART');
           }
         } else if (event.type === 'warning') {
           addLog(event.message, 'warn', 'WARNING');
@@ -232,6 +241,9 @@ export default function App() {
     if (event.step !== 'done') setCurrentStep(event.step);
     if (event.attempt) setAttempt({ current: event.attempt, max: event.max_attempts });
 
+    if (event.step === 'fetch') setPartInfo(null);
+    if (event.part) setPartInfo({ part: event.part, parts: event.parts });
+
     if (event.step === 'fetch' && event.max_pages > 1) {
       setPageInfo({ page: event.page, max: event.max_pages });
       setAttempt(null);
@@ -240,7 +252,8 @@ export default function App() {
       addLog(`Page loaded (${event.html_chars.toLocaleString()} chars of HTML). Cleaning…`, 'info', 'CLEAN');
     } else if (event.step === 'infer') {
       const suffix = event.attempt > 1 ? ` (attempt ${event.attempt} of ${event.max_attempts})` : '';
-      addLog(`Extracting fields from ${event.text_chars.toLocaleString()} chars of text${suffix}…`, 'info', 'EXTRACT');
+      const part = event.part ? `part ${event.part} of ${event.parts}, ` : '';
+      addLog(`Extracting fields from ${part}${event.text_chars.toLocaleString()} chars of text${suffix}…`, 'info', 'EXTRACT');
     } else if (event.step === 'validate') {
       addLog('Validating output against your fields…', 'info', 'VALIDATE');
     }
@@ -268,7 +281,7 @@ export default function App() {
 
   const handleSaveConfig = (newConfig) => {
     setConfig(newConfig);
-    localStorage.setItem('ai_scraper_config', JSON.stringify({ ...newConfig, version: 2 }));
+    localStorage.setItem('ai_scraper_config', JSON.stringify({ ...newConfig, version: 3 }));
     addLog('Settings saved.', 'info', 'SETTINGS');
   };
 
@@ -318,6 +331,7 @@ export default function App() {
             errorStep={errorStep}
             attempt={attempt}
             pageInfo={status === 'running' ? pageInfo : null}
+            partInfo={status === 'running' ? partInfo : null}
           />
 
           <div className="flex-1 min-h-0">

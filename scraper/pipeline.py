@@ -12,6 +12,7 @@ from typing import Any, Callable
 from scraper.navigator import Navigator
 from scraper.distiller import Distiller, wanted_attributes
 from scraper.brain import Brain
+from scraper.chunking import CHUNK_CHARS, merge_items, split_text
 from scraper.pagination import find_next_page
 from scraper.validator import SchemaMismatchError, Validator, ValidationError
 
@@ -221,15 +222,131 @@ class ScraperPipeline:
             )
 
         # ── Steps 3–4: LLM extraction with self-healing retry loop ───────────
-        data = await self._extract(cleaned, schema_description, expect_list, warnings)
+        if not expect_list:
+            # One record: it's near the top, and one request can't take more.
+            if len(cleaned) > CHUNK_CHARS:
+                warnings.append(
+                    f"Only the first {CHUNK_CHARS:,} of {len(cleaned):,} characters of page text "
+                    "were read for a single record."
+                )
+            data = await self._extract(cleaned[:CHUNK_CHARS], schema_description, False, warnings)
+            return data, raw_html, warnings
 
+        parts = split_text(cleaned)
+        if len(parts) == 1:
+            data = await self._extract(cleaned, schema_description, True, warnings)
+            return data, raw_html, warnings
+        return await self._extract_parts(parts, schema_description, warnings), raw_html, warnings
+
+    async def _extract_parts(
+        self,
+        parts: list[str],
+        schema_description: str,
+        warnings: list[str],
+    ) -> list[Any]:
+        """Extract items from each part of a long page and merge them.
+
+        Stops early when a part has no items after earlier parts had some:
+        the list is over and the rest is footer, not worth a request each.
+        """
+        total = len(parts)
+        logger.info("Page text is long; reading it in %d parts.", total)
+        items: list[Any] = []
+        for number, text in enumerate(parts, start=1):
+            part_warnings: list[str] = []
+            found = await self._extract(
+                text, schema_description, True, part_warnings, part=(number, total)
+            )
+            warnings += [f"Part {number} of {total}: {message}" for message in part_warnings]
+            fresh = merge_items(items, found)
+            items.extend(fresh)
+            stop = not found and bool(items) and number < total
+            self._emit(
+                "part_done", part=number, parts=total, items=len(fresh),
+                total_items=len(items), stopped=stop,
+            )
+            if stop:
+                logger.info("Part %d had no items; skipping the remaining %d.", number, total - number)
+                break
+
+        if not items:
+            raise RuntimeError(
+                f"No items matching your fields were found in any of the {total} parts of the page text."
+            )
+        return items
+
+    async def _extract(
+        self,
+        cleaned: str,
+        schema_description: str,
+        expect_list: bool,
+        warnings: list[str],
+        part: tuple[int, int] | None = None,
+    ) -> Any:
+        """Ask the LLM for JSON and validate it, retrying with the error as feedback.
+
+        *part* is ``(number, total)`` for one part of a long page; a part may
+        have no items, so an empty list is accepted then.
+        """
+        logger.info("[3/5] Brain: Sending to Groq LLM")
+        previous_error: str | None = None
+        last_error = ""
+        part_info = {"part": part[0], "parts": part[1]} if part else {}
+
+        for attempt in range(self.max_retries):
+            progress = {"attempt": attempt + 1, "max_attempts": self.max_retries}
+            self._emit("step", step="infer", text_chars=len(cleaned), **progress, **part_info)
+            raw_response: str = await self._brain.extract(
+                cleaned_text=cleaned,
+                schema_description=schema_description,
+                previous_error=previous_error,
+                **({"part": part} if part else {}),
+            )
+
+            logger.info("[4/5] Validator: Checking AI output (attempt %d/%d)", attempt + 1, self.max_retries)
+            self._emit("step", step="validate", **progress, **part_info)
+            try:
+                data = self._validator.run_all(
+                    raw_response,
+                    expect_list=expect_list,
+                    schema_description=schema_description,
+                    allow_empty=part is not None,
+                )
+                logger.info("[5/5] ✓ Data validated and extracted successfully.")
+            except ValidationError as e:
+                if isinstance(e, SchemaMismatchError) and attempt + 1 == self.max_retries:
+                    # Out of retries but the data is usable: keep it and say what's off.
+                    shown = "; ".join(e.problems[:3])
+                    more = f" (and {len(e.problems) - 3} more)" if len(e.problems) > 3 else ""
+                    warnings.append(
+                        f"Some values still didn't match your fields after {self.max_retries} "
+                        f"attempts: {shown}{more}."
+                    )
+                    data = e.data
+                else:
+                    last_error = str(e)
+                    logger.warning("Attempt %d failed: %s", attempt + 1, last_error)
+                    previous_error = last_error
+                    self._emit("retry", error=last_error, **progress)
+                    continue
+
+            self._check_reply(data, warnings)
+            return data
+
+        raise RuntimeError(
+            f"Failed to extract valid data after {self.max_retries} attempts. "
+            f"Last error: {last_error}"
+        )
+
+    def _check_reply(self, data: Any, warnings: list[str]) -> None:
+        """Warn about a reply from a fallback model or one that was cut off."""
         used = getattr(self._brain, "model_used", None)
         preferred = getattr(self._brain, "preferred_model", None)
         if used and preferred and used != preferred:
             warnings.append(
                 f"{preferred} was unavailable (rate limit or error), so {used} answered "
-                f"instead and the results may be less complete. Trying again in a minute "
-                f"usually gets {preferred} back."
+                "instead and the results may be less complete. Groq's free tier limits tokens "
+                "per minute and per day; try again later for a fuller result."
             )
 
         # finish_reason == "length" is the direct signal; the repair flag also
@@ -240,54 +357,3 @@ class ScraperPipeline:
                 f"The model's output hit its length limit after {count} complete items; "
                 "any items after those are missing."
             )
-        return data, raw_html, warnings
-
-    async def _extract(
-        self,
-        cleaned: str,
-        schema_description: str,
-        expect_list: bool,
-        warnings: list[str],
-    ) -> Any:
-        """Ask the LLM for JSON and validate it, retrying with the error as feedback."""
-        logger.info("[3/5] Brain: Sending to Groq LLM")
-        previous_error: str | None = None
-        last_error = ""
-
-        for attempt in range(self.max_retries):
-            progress = {"attempt": attempt + 1, "max_attempts": self.max_retries}
-            self._emit("step", step="infer", text_chars=len(cleaned), **progress)
-            raw_response: str = await self._brain.extract(
-                cleaned_text=cleaned,
-                schema_description=schema_description,
-                previous_error=previous_error,
-            )
-
-            logger.info("[4/5] Validator: Checking AI output (attempt %d/%d)", attempt + 1, self.max_retries)
-            self._emit("step", step="validate", **progress)
-            try:
-                data = self._validator.run_all(
-                    raw_response, expect_list=expect_list, schema_description=schema_description
-                )
-                logger.info("[5/5] ✓ Data validated and extracted successfully.")
-                return data
-
-            except ValidationError as e:
-                if isinstance(e, SchemaMismatchError) and attempt + 1 == self.max_retries:
-                    # Out of retries but the data is usable: keep it and say what's off.
-                    shown = "; ".join(e.problems[:3])
-                    more = f" (and {len(e.problems) - 3} more)" if len(e.problems) > 3 else ""
-                    warnings.append(
-                        f"Some values still didn't match your fields after {self.max_retries} "
-                        f"attempts: {shown}{more}."
-                    )
-                    return e.data
-                last_error = str(e)
-                logger.warning("Attempt %d failed: %s", attempt + 1, last_error)
-                previous_error = last_error
-                self._emit("retry", error=last_error, **progress)
-
-        raise RuntimeError(
-            f"Failed to extract valid data after {self.max_retries} attempts. "
-            f"Last error: {last_error}"
-        )

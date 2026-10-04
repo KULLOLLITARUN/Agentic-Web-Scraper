@@ -38,6 +38,8 @@ MIN_TOKEN_BUDGET = 1000
 # Measured ~3.7 characters per token on a distilled job board page; 3.2
 # overestimates the prompt so the total stays under the limit.
 CHARS_PER_TOKEN = 3.2
+# Wait before retrying a request rejected as too large for the TPM limit.
+TOO_LARGE_RETRY_DELAY = 3
 
 # Error codes meaning "this particular model can't be used" — worth failing over.
 MODEL_ERROR_CODES = {"model_not_found", "model_decommissioned", "model_not_active"}
@@ -71,12 +73,16 @@ class Brain:
         cleaned_text: str,
         schema_description: str,
         previous_error: str | None = None,
+        part: tuple[int, int] | None = None,
     ) -> str:
         """Call the LLM to extract structured data from *cleaned_text*.
 
         Fails over to the next model on rate limits, oversized requests,
         server/network errors or an unavailable model. Errors that would hit
         every model (invalid API key, malformed request) are raised at once.
+
+        *part* is ``(number, total)`` when *cleaned_text* is one part of a
+        long page split by :mod:`scraper.chunking`.
         """
         user_parts: list[str] = [
             "## DATA SCHEMA (what to extract):",
@@ -85,6 +91,16 @@ class Brain:
             "## WEBSITE TEXT:",
             cleaned_text,
         ]
+
+        if part is not None:
+            number, total = part
+            user_parts += [
+                "",
+                f"## NOTE: this is part {number} of {total} of the page text.",
+                "It can start or end partway through an item. Skip an item that is cut off "
+                "at the very start or end of this part (it appears in full in the next or "
+                "previous part). If this part has no matching items, return [].",
+            ]
 
         if previous_error is not None:
             user_parts += [
@@ -112,46 +128,61 @@ class Brain:
         for model_name in self._models:
             token_budget = _token_budget(model_name, len(SYSTEM_PROMPT) + len(user_prompt))
 
-            try:
-                logger.info("Attempting extraction with model %s (budget=%d tokens)...", model_name, token_budget)
-                response = await self._client.chat.completions.create(
-                    model=model_name,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    temperature=0.3,
-                    max_tokens=token_budget,
-                    **_model_options(model_name),
-                )
-                choice = response.choices[0]
-                content = (choice.message.content or "").strip()
-                usage = getattr(response, "usage", None)
-                if usage is not None:
-                    logger.info(
-                        "%s used %s prompt + %s completion tokens (finish_reason=%s)",
-                        model_name,
-                        usage.prompt_tokens,
-                        usage.completion_tokens,
-                        getattr(choice, "finish_reason", None),
-                    )
+            for retry_smaller in (True, False):
+                try:
+                    content = await self._request(model_name, user_prompt, token_budget)
+                except groq.APIError as e:
+                    if not _should_failover(e):
+                        # The same error would hit every model (bad key, bad request),
+                        # so surface it instead of hiding it behind a failover.
+                        raise
+                    if retry_smaller and _too_large_for_tpm(e) and token_budget > MIN_TOKEN_BUDGET:
+                        # The prompt took more tokens than estimated (tables and
+                        # numbers do). The same model usually takes a smaller cap
+                        # a moment later, and it beats the fallback by far.
+                        token_budget = max(MIN_TOKEN_BUDGET, int(token_budget * 0.6))
+                        logger.warning("%s: request too large for the TPM limit; retrying with budget=%d.", model_name, token_budget)
+                        await asyncio.sleep(TOO_LARGE_RETRY_DELAY)
+                        continue
+                    last_error = e
+                    logger.warning("%s failed (%s). Failing over to next model...", model_name, e)
+                    if isinstance(e, groq.RateLimitError):
+                        await asyncio.sleep(1)
+                    break
                 if content:
-                    self.truncated = getattr(choice, "finish_reason", None) == "length"
                     self.model_used = model_name
                     return content
                 logger.warning("Empty response from %s. Failing over to next model...", model_name)
-
-            except groq.APIError as e:
-                if not _should_failover(e):
-                    # The same error would hit every model (bad key, bad request),
-                    # so surface it instead of hiding it behind a failover.
-                    raise
-                last_error = e
-                logger.warning("%s failed (%s). Failing over to next model...", model_name, e)
-                if isinstance(e, groq.RateLimitError):
-                    await asyncio.sleep(1)
+                break
 
         raise last_error or RuntimeError("All models in the extraction pool exhausted.")
+
+    async def _request(self, model_name: str, user_prompt: str, token_budget: int) -> str:
+        """One completion call; returns the reply text and sets :attr:`truncated`."""
+        logger.info("Attempting extraction with model %s (budget=%d tokens)...", model_name, token_budget)
+        response = await self._client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.3,
+            max_tokens=token_budget,
+            **_model_options(model_name),
+        )
+        choice = response.choices[0]
+        content = (choice.message.content or "").strip()
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            logger.info(
+                "%s used %s prompt + %s completion tokens (finish_reason=%s)",
+                model_name,
+                usage.prompt_tokens,
+                usage.completion_tokens,
+                getattr(choice, "finish_reason", None),
+            )
+        self.truncated = bool(content) and getattr(choice, "finish_reason", None) == "length"
+        return content
 
     @property
     def preferred_model(self) -> str:
@@ -194,6 +225,11 @@ def _error_code(error: groq.APIError) -> str:
     body = error.body if isinstance(error.body, dict) else {}
     inner = body.get("error") if isinstance(body.get("error"), dict) else body
     return str(inner.get("code") or "")
+
+
+def _too_large_for_tpm(error: groq.APIError) -> bool:
+    """A 413 "request too large ... tokens per minute": prompt + max_tokens over the limit."""
+    return getattr(error, "status_code", None) == 413 and _error_code(error) == "rate_limit_exceeded"
 
 
 def _should_failover(error: groq.APIError) -> bool:

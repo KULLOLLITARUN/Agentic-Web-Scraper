@@ -22,7 +22,7 @@ function stepStatus(stepId, index, currentStep, errorStep) {
   return 'pending';
 }
 
-export default function PipelineStepper({ currentStep, errorStep, attempt, pageInfo }) {
+export default function PipelineStepper({ currentStep, errorStep, attempt, pageInfo, partInfo }) {
   const barRef = useRef(null);
   const nodeRefs = useRef([]);
 
@@ -62,8 +62,11 @@ export default function PipelineStepper({ currentStep, errorStep, attempt, pageI
           // Surface self-healing retries on the LLM steps.
           const retrying = attempt && attempt.current > 1 && (id === 'infer' || id === 'validate') && st !== 'pending';
           const paging = pageInfo && id === 'fetch';
+          // Long pages are read in parts.
+          const parting = partInfo && id === 'infer' && st !== 'pending';
           let detail = desc;
           if (retrying) detail = `Attempt ${attempt.current} of ${attempt.max}`;
+          else if (parting) detail = `Part ${partInfo.part} of ${partInfo.parts}`;
           else if (paging) detail = `Page ${pageInfo.page} of up to ${pageInfo.max}`;
           const node = {
             pending: 'bg-surface border-line text-faint',

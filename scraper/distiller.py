@@ -48,7 +48,9 @@ LINK_HEADER = "Page URL: {url} (links shown as /path are on this site; give full
 # <header> tags inside these are content (e.g. an article's title), not chrome.
 CONTENT_CONTAINERS = ["article", "main", "section"]
 
-MAX_CHARS = 12_000
+# Total page text kept. Long pages are sent to the model in parts
+# (scraper.chunking), so this is ~3 requests' worth, not one.
+MAX_CHARS = 40_000
 TRUNCATION_SUFFIX = "... [TRUNCATED]"
 
 

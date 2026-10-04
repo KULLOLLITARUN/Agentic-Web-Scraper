@@ -212,3 +212,55 @@ def test_model_used_records_which_model_answered():
 
     assert b.preferred_model == MODELS[0]
     assert b.model_used == MODELS[1]
+
+
+def test_prompt_says_which_part_of_a_long_page():
+    b, fake = make_brain(["[]", "[]"])
+    prompts = []
+    original = fake.create
+
+    async def spy(**kw):
+        prompts.append(kw["messages"][1]["content"])
+        return await original(**kw)
+
+    fake.create = spy
+    asyncio.run(b.extract(cleaned_text="t", schema_description="title (string)", part=(2, 3)))
+    extract(b)
+
+    assert "part 2 of 3" in prompts[0]
+    assert "part " not in prompts[1].lower().split("## website text")[1]
+
+
+def budgets_spy(fake):
+    budgets = []
+    original = fake.create
+
+    async def spy(**kw):
+        budgets.append((kw["model"], kw["max_tokens"]))
+        return await original(**kw)
+
+    fake.create = spy
+    return budgets
+
+
+def test_tpm_413_retries_same_model_with_smaller_budget():
+    too_large = api_error(groq.APIStatusError, 413, code="rate_limit_exceeded")
+    b, fake = make_brain([too_large, "[]"])
+    budgets = budgets_spy(fake)
+
+    assert extract(b) == "[]"
+    (m1, first), (m2, second) = budgets
+    assert m1 == m2 == MODELS[0]
+    assert second < first
+    assert b.model_used == MODELS[0]
+
+
+def test_second_tpm_413_fails_over():
+    too_large = api_error(groq.APIStatusError, 413, code="rate_limit_exceeded")
+    b, fake = make_brain([too_large, too_large, "[]"])
+    budgets = budgets_spy(fake)
+
+    extract(b)
+
+    assert [m for m, _ in budgets] == [MODELS[0], MODELS[0], MODELS[1]]
+    assert b.model_used == MODELS[1]

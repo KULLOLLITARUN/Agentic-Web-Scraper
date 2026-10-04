@@ -160,3 +160,8 @@ def test_single_object_problems_have_no_item_prefix(v):
         v.run_all('{"rank": "x"}', expect_list=False, schema_description="rank (int)")
 
     assert exc.value.problems == ['"rank" should be a whole number, got "x"']
+
+
+def test_allow_empty_accepts_a_list_with_no_items(v):
+    assert v.run_all("[]", allow_empty=True) == []
+    assert v.run_all("[{}, null]", allow_empty=True) == []

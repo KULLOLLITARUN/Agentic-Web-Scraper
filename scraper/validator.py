@@ -332,7 +332,13 @@ class Validator:
             raise SchemaMismatchError(problems, data)
         return data
 
-    def run_all(self, raw_response: str, expect_list: bool = True, schema_description: str | None = None) -> Any:
+    def run_all(
+        self,
+        raw_response: str,
+        expect_list: bool = True,
+        schema_description: str | None = None,
+        allow_empty: bool = False,
+    ) -> Any:
         """Run the full validation pipeline on *raw_response*.
 
         Steps:
@@ -350,6 +356,8 @@ class Validator:
                 When ``False``, only JSON validity is checked.
             schema_description: The user's field description, e.g.
                 ``"title (string), price (float)"``.
+            allow_empty: Accept a list with no items (one part of a long
+                page may have none) instead of raising.
 
         Returns:
             The validated (and possibly filtered and coerced) Python object.
@@ -362,5 +370,8 @@ class Validator:
         data = self.parse(raw_response)
         if expect_list:
             data = self.validate_is_list(data)
-            data = self.validate_no_empty_items(data)
+            if allow_empty:
+                data = [item for item in data if item is not None and item != {}]
+            else:
+                data = self.validate_no_empty_items(data)
         return self.validate_fields(data, parse_schema_fields(schema_description or ""))

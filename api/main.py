@@ -133,7 +133,7 @@ class ScrapeRequest(BaseModel):
         default=None,
         ge=1000,
         le=200_000,
-        description="Maximum characters of page text sent to the model. Defaults to 12,000.",
+        description="Maximum characters of page text read. Longer pages are sent to the model in parts of 12,000. Defaults to 40,000.",
     )
 
 

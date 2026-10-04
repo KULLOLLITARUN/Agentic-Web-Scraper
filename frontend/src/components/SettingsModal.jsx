@@ -5,7 +5,7 @@ const DEFAULTS = {
   apiKey: '',
   model: '',
   backendUrl: 'http://localhost:8000',
-  maxChars: 12000,
+  maxChars: 40000,
 };
 
 // Keep in sync with MODELS in scraper/brain.py.
@@ -80,7 +80,7 @@ export default function SettingsModal({ isOpen, onClose, config = {}, onSave }) 
         <Field label="API key" hint="Optional. Leave blank to use the server's .env key.">
           <input type="password" className="field" placeholder="••••••••" value={form.apiKey} onChange={set('apiKey')} />
         </Field>
-        <Field label="Max page text (characters)" hint="Page text beyond this is cut off. Higher catches more items but uses more tokens.">
+        <Field label="Max page text (characters)" hint="Long pages are read in parts of 12,000 characters; text beyond this total is cut off. Higher catches more items on long pages but takes longer (the free Groq tier reads roughly 25,000 characters a minute).">
           <input type="number" min={1000} max={200000} step={1000} className="field" value={form.maxChars} onChange={set('maxChars')} />
         </Field>
       </form>

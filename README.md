@@ -216,7 +216,7 @@ curl -X POST "http://127.0.0.1:8000/scrape" \
 }
 ```
 
-`warnings` lists reasons the data may be incomplete, e.g. the page text was longer than `max_chars` or the model's output was cut off. Optional request fields: `max_pages` (see below), `model` (preferred Groq model), `api_key` (overrides `GROQ_API_KEY`) and `max_chars` (page text limit, default 12,000).
+`warnings` lists reasons the data may be incomplete, e.g. the page text was longer than `max_chars` or the model's output was cut off. Optional request fields: `max_pages` (see below), `model` (preferred Groq model), `api_key` (overrides `GROQ_API_KEY`) and `max_chars` (total page text read, default 40,000; pages longer than 12,000 characters are sent to the model in overlapping parts and the items merged).
 
 ### Multiple pages
 

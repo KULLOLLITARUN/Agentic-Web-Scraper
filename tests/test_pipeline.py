@@ -243,3 +243,87 @@ def test_no_fallback_warning_when_preferred_model_answered():
     result = asyncio.run(p.run("https://example.com", "name (string)"))
 
     assert result["warnings"] == []
+
+
+LONG_PAGE = "<main>" + "".join(f"<p>Item {i:02d} " + "y" * 990 + "</p>" for i in range(30)) + "</main>"
+
+
+class RecordingBrain(FakeBrain):
+    def __init__(self, replies):
+        super().__init__(replies)
+        self.calls = []
+
+    async def extract(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.replies.pop(0)
+
+
+def run_long(monkeypatch, replies, expect_list=True):
+    async def fetch(self, url, **_):
+        return LONG_PAGE
+
+    monkeypatch.setattr(FakeNavigator, "fetch", fetch)
+    p = ScraperPipeline(api_key="test-key")
+    p._brain = RecordingBrain(replies)
+    events = []
+    result = asyncio.run(
+        p.run("https://example.com", "name (string)", expect_list=expect_list, on_event=events.append)
+    )
+    return result, events, p._brain.calls
+
+
+def test_long_page_is_read_in_parts_and_merged(monkeypatch):
+    result, events, calls = run_long(
+        monkeypatch,
+        [
+            '[{"name": "Item 00"}, {"name": "Item 01"}]',
+            '[{"name": "Item 01"}, {"name": "Item 02"}]',  # Item 01 again, from the overlap
+            '[{"name": "Item 03"}]',
+        ],
+    )
+
+    assert [c["part"] for c in calls] == [(1, 3), (2, 3), (3, 3)]
+    assert all(len(c["cleaned_text"]) <= 15_000 for c in calls)
+    assert result["data"] == [{"name": f"Item 0{i}"} for i in range(4)]
+    assert result["warnings"] == []
+    infer = [e for e in events if e.get("step") == "infer"]
+    assert [(e["part"], e["parts"]) for e in infer] == [(1, 3), (2, 3), (3, 3)]
+    assert [e["total_items"] for e in events if e["type"] == "part_done"] == [2, 3, 4]
+
+
+def test_part_without_items_is_fine_and_ends_the_list(monkeypatch):
+    result, events, calls = run_long(monkeypatch, ['[{"name": "Item 00"}]', "[]"])
+
+    assert len(calls) == 2  # part 3 skipped: the list ended in part 2
+    assert result["data"] == [{"name": "Item 00"}]
+    assert [e["stopped"] for e in events if e["type"] == "part_done"] == [False, True]
+
+
+def test_items_after_an_empty_first_part_are_found(monkeypatch):
+    result, _, calls = run_long(monkeypatch, ["[]", '[{"name": "Item 12"}]', "[]"])
+
+    assert len(calls) == 3
+    assert result["data"] == [{"name": "Item 12"}]
+
+
+def test_no_items_in_any_part_is_an_error(monkeypatch):
+    with pytest.raises(RuntimeError, match="No items matching your fields"):
+        run_long(monkeypatch, ["[]", "[]", "[]"])
+
+
+def test_part_warnings_say_which_part(monkeypatch):
+    result, _, _ = run_long(
+        monkeypatch, ['[{"name": "Item 00"}]', '[{"name": "Item 10"}, {"name": "It', '[{"name": "Item 20"}]']
+    )
+
+    assert len(result["warnings"]) == 1
+    assert result["warnings"][0].startswith("Part 2 of 3: The model's output hit its length limit")
+
+
+def test_single_record_reads_only_the_first_part(monkeypatch):
+    result, _, calls = run_long(monkeypatch, ['{"name": "Item 00"}'], expect_list=False)
+
+    assert len(calls) == 1
+    assert "part" not in calls[0]
+    assert len(calls[0]["cleaned_text"]) == 12_000
+    assert result["warnings"][0].startswith("Only the first 12,000")
