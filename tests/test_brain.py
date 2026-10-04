@@ -16,8 +16,9 @@ def api_error(cls, status, code=None):
     return cls("boom", response=response, body=body)
 
 
-def reply(text):
-    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=text))])
+def reply(text, finish_reason="stop"):
+    choice = SimpleNamespace(message=SimpleNamespace(content=text), finish_reason=finish_reason)
+    return SimpleNamespace(choices=[choice])
 
 
 class FakeCompletions:
@@ -32,6 +33,8 @@ class FakeCompletions:
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, Exception):
             raise outcome
+        if isinstance(outcome, tuple):
+            return reply(*outcome)
         return reply(outcome)
 
 
@@ -156,3 +159,32 @@ def test_reasoning_effort_only_sent_to_gpt_oss(model, expected):
     extract(b)
 
     assert {k: v for k, v in captured.items() if k == "reasoning_effort"} == expected
+
+
+@pytest.mark.parametrize(
+    "model, budget",
+    [("openai/gpt-oss-120b", brain_module.GPT_OSS_TOKEN_BUDGET), ("qwen/qwen3.8-27b", 800)],
+)
+def test_token_budget_per_model(model, budget):
+    b, fake = make_brain(["[]"], model=model)
+    captured = {}
+    original = fake.create
+
+    async def spy(**kw):
+        captured.update(kw)
+        return await original(**kw)
+
+    fake.create = spy
+    extract(b)
+
+    assert captured["max_tokens"] == budget
+
+
+def test_truncated_set_when_reply_hits_length_limit():
+    b, _ = make_brain([('[{"title": "a"}, {"ti', "length"), "[]"])
+
+    extract(b)
+    assert b.truncated is True
+
+    extract(b)
+    assert b.truncated is False

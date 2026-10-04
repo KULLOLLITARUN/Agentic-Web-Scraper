@@ -241,6 +241,15 @@ class Validator:
         try:
             return json.loads(cleaned)
         except json.JSONDecodeError as e:
+            # A complete value followed only by stray closers (gpt-oss sometimes
+            # ends with "}]]") wasn't cut off, so don't flag it as repaired.
+            try:
+                value, end = json.JSONDecoder().raw_decode(cleaned)
+            except json.JSONDecodeError:
+                pass
+            else:
+                if not cleaned[end:].strip(" \t\r\n]},"):
+                    return value
             repaired = self.repair_truncated_json(cleaned)
             if repaired is not None:
                 self.repaired = True

@@ -29,6 +29,8 @@ MODELS = [
     "qwen/qwen3.8-27b"
 ]
 
+GPT_OSS_TOKEN_BUDGET = 6000
+
 # Error codes meaning "this particular model can't be used" — worth failing over.
 MODEL_ERROR_CODES = {"model_not_found", "model_decommissioned", "model_not_active"}
 
@@ -49,6 +51,9 @@ class Brain:
         self._client = AsyncGroq(api_key=api_key)
         # A preferred model is tried first; the rest of the pool stays as failover.
         self._models = [model] + [m for m in MODELS if m != model] if model else list(MODELS)
+        #: True when the last reply stopped at the output token limit
+        #: (``finish_reason == "length"``), so its JSON was cut off.
+        self.truncated = False
 
     async def extract(
         self,
@@ -88,11 +93,11 @@ class Brain:
         user_prompt = "\n".join(user_parts)
 
         last_error = None
+        self.truncated = False
 
         # Iterate through model pool with automatic failover
         for model_name in self._models:
-            # Scale tokens conservatively for qwen, higher for gpt-oss
-            token_budget = 800 if "qwen" in model_name else 3500
+            token_budget = _token_budget(model_name)
 
             try:
                 logger.info("Attempting extraction with model %s (budget=%d tokens)...", model_name, token_budget)
@@ -106,8 +111,19 @@ class Brain:
                     max_tokens=token_budget,
                     **_model_options(model_name),
                 )
-                content = (response.choices[0].message.content or "").strip()
+                choice = response.choices[0]
+                content = (choice.message.content or "").strip()
+                usage = getattr(response, "usage", None)
+                if usage is not None:
+                    logger.info(
+                        "%s used %s prompt + %s completion tokens (finish_reason=%s)",
+                        model_name,
+                        usage.prompt_tokens,
+                        usage.completion_tokens,
+                        getattr(choice, "finish_reason", None),
+                    )
                 if content:
+                    self.truncated = getattr(choice, "finish_reason", None) == "length"
                     return content
                 logger.warning("Empty response from %s. Failing over to next model...", model_name)
 
@@ -122,6 +138,17 @@ class Brain:
                     await asyncio.sleep(1)
 
         raise last_error or RuntimeError("All models in the extraction pool exhausted.")
+
+
+def _token_budget(model_name: str) -> int:
+    """Output token cap (``max_tokens``) for *model_name*.
+
+    Groq doesn't reserve ``max_tokens`` against the per-minute token limit
+    (8,000 for every model in the pool); only tokens actually generated
+    count. So a high cap costs nothing on short pages and keeps long ones
+    (Quotes pages with long quotes) from being cut off at the last items.
+    """
+    return 800 if "qwen" in model_name else GPT_OSS_TOKEN_BUDGET
 
 
 def _model_options(model_name: str) -> dict:

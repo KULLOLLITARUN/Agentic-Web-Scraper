@@ -80,6 +80,18 @@ def test_emits_warning_when_output_was_cut_off():
     assert warnings == result["warnings"]
 
 
+def test_warns_when_model_reports_length_limit_even_if_json_parses():
+    # The reply ended right after a closing bracket, so nothing needed repair,
+    # but finish_reason said the output hit the token limit.
+    p = ScraperPipeline(api_key="test-key")
+    p._brain = FakeBrain(['[{"name": "Item one"}]'])
+    p._brain.truncated = True
+    result = asyncio.run(p.run("https://example.com", "name (string)"))
+
+    assert len(result["warnings"]) == 1
+    assert "length limit after 1 complete items" in result["warnings"][0]
+
+
 def test_step_shows_where_it_failed_after_retries_run_out():
     p = ScraperPipeline(max_retries=2, api_key="test-key")
     p._brain = FakeBrain(["nope", "still nope"])

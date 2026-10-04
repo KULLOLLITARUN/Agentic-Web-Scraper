@@ -24,6 +24,21 @@ def test_repairs_output_cut_off_mid_object(v):
     assert v.repaired is True
 
 
+def test_stray_closing_bracket_is_not_treated_as_cut_off(v):
+    # Real gpt-oss output on quotes.toscrape.com page 10 ended with "}]]".
+    data = v.run_all('[{"a": 1}, {"a": 2}]]')
+
+    assert data == [{"a": 1}, {"a": 2}]
+    assert v.repaired is False
+
+
+def test_second_value_after_json_is_not_dropped_silently(v):
+    # Only stray closers are ignored; a second array is an error to retry,
+    # not something to cut down to the first array.
+    with pytest.raises(ValidationError, match="Invalid JSON"):
+        v.run_all('[{"a": 1}] [{"a": 2}]')
+
+
 def test_repaired_flag_resets_on_next_parse(v):
     v.run_all('[{"a": 1}, {"a": ')
     v.run_all('[{"a": 1}]')
