@@ -37,7 +37,7 @@ start http://localhost:5173
 echo.
 echo ==========================================================
 echo [SUCCESS] Both services launched in separate windows!
-echo - UI Workbench: http://localhost:5173
+echo - App:          http://localhost:5173
 echo - API Docs:     http://localhost:8001/docs
 echo ==========================================================
 echo.
